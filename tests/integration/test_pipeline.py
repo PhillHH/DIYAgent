@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from agents.schemas import ReportData, WebSearchItem, WebSearchPlan
+from guards.schemas import InputGuardResult, OutputGuardResult
 from orchestrator.pipeline import SettingsBundle, run_job
 from orchestrator.status import get_status, reset_statuses
 
@@ -27,7 +28,7 @@ async def test_run_job_completes(monkeypatch: pytest.MonkeyPatch) -> None:
             "Werkzeuge vorbereiten",
         ]
 
-    async def fake_writer(query, summaries, settings):  # type: ignore[unused-argument]
+    async def fake_writer(query, summaries, settings, category=None):  # type: ignore[unused-argument]
         return ReportData(
             short_summary="Kurze Zusammenfassung",
             markdown_report="# Bericht\n\nDIY-Inhalt",
@@ -37,6 +38,14 @@ async def test_run_job_completes(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_email(*args, **kwargs):  # type: ignore[unused-argument]
         return {"status": "sent"}
 
+    async def fake_input_guard(query, settings):  # type: ignore[unused-argument]
+        return InputGuardResult(category="DIY", reasons=["Test"])
+
+    async def fake_output_guard(query, report_md, settings):  # type: ignore[unused-argument]
+        return OutputGuardResult(allowed=True, issues=[], category="DIY")
+
+    monkeypatch.setattr("orchestrator.pipeline.classify_query_llm", fake_input_guard)
+    monkeypatch.setattr("orchestrator.pipeline.audit_report_llm", fake_output_guard)
     monkeypatch.setattr("orchestrator.pipeline.plan_searches", fake_plan)
     monkeypatch.setattr("orchestrator.pipeline.perform_searches", fake_search)
     monkeypatch.setattr("orchestrator.pipeline.write_report", fake_writer)

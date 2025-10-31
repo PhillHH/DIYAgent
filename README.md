@@ -39,6 +39,13 @@ Status-Store <- FastAPI (/status/{job_id})
 2. Probelauf: `python scripts/e2e_probe.py --email deine.mail@example.com`
 3. Skript pollt `/status/{job_id}` und zeigt Phasen an; Exit-Code `0` bei Erfolg, sonst `1`.
 
+## Lokaler Start (Venv)
+- Verwende die Hilfsskripte, damit uvicorn immer das Projekt-Venv nutzt:
+  - PowerShell: `scripts\dev.ps1`
+  - POSIX (bash/zsh): `./scripts/dev.sh`
+- Somit wird `uvicorn api.main:app --reload` mit aktivierter `.venv`-Umgebung gestartet; ohne dies kann `ModuleNotFoundError: No module named 'markdown'` auftreten, weil der Reload-Prozess sonst den globalen Python-Interpreter nutzt.
+- Hinweis: Globale `PYTHONPATH`-Änderungen oder `use-pep582`-Flags sollten deaktiviert bleiben, damit die Venv-Erkennung konsistent funktioniert.
+
 ## Troubleshooting
 - **OpenAI/SENDGRID-Key fehlt** → `.env` pruefen; Fehlermeldung nennt die Variablen.
 - **Modell liefert `REJECT`** → Anfrage konkreter als DIY formulieren (z. B. Werkzeuge, Materialien erwaehnen).
@@ -48,7 +55,7 @@ Status-Store <- FastAPI (/status/{job_id})
 
 ## Wartungshinweise
 - Neue Modelle zentral in `agents/model_settings.py` anpassen.
-- Guardrail-Schluesselwoerter in `guards/input_guard.py` / `guards/output_guard.py` pflegen.
+- LLM-Guard-Prompts in `guards/llm_input_guard.py` und `guards/llm_output_guard.py` regelmaessig pruefen und bei Bedarf tweaken.
 - Tests in CI einbinden, bevor produktive Keys verwendet werden.
 
 ## OpenAI-Tracing (Prototyp)
@@ -73,4 +80,9 @@ Status-Store <- FastAPI (/status/{job_id})
 - Konfiguration: `.env` optional `OPENAI_WEB_TOOL_TYPE` fuer Websuche, `OPENAI_TRACING_ENABLED` fuer Plattform-Traces, `OPENAI_TRACE_RAW` fuer lokale Loginspektion.
 - Limits & Performance: MAX_EMAIL_SIZE 500 KB; lange Inhalte werden nicht gekürzt. Bei grossen Projekten kann das Rendern einige Sekunden dauern.
 - Troubleshooting: 400er von OpenAI → Tool-Type pruefen (`web_search_preview`, `web_search_preview_2025_03_11`), bei SendGrid-401 API-Key und Berechtigungen validieren. Beispiel-Screenshot folgt im separaten `docs/`-Ordner.
+
+## LLM-Guards
+- Input: `classify_query_llm` klassifiziert Anfragen (`DIY`, `KI_CONTROL`, `REJECT`). REJECT stoppt den Job sofort, KI_CONTROL aktiviert das Governance-Template im Writer.
+- Output: `audit_report_llm` prueft den finalen Markdown gegen Policies (DIY/KI-Control erlaubt, riskante Inhalte werden abgewiesen). Bei Guard-Ausfall bricht der Job mit `phase="error"` ab.
+- Statusmeldungen dokumentieren die Kategorie sowie eventuelle Policy-Issues im `detail`-Feld.
 

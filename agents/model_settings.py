@@ -8,6 +8,14 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from config import (
+    GUARD_MODEL,
+    GUARD_TEMPERATURE,
+    PLANNER_MODEL_NAME,
+    SEARCH_MODEL_NAME,
+    WRITER_MODEL_NAME,
+)
+
 
 class ModelSettings(BaseModel):
     """Kapselt die Parameter fuer einen OpenAI-Aufruf.
@@ -42,7 +50,8 @@ class ModelSettings(BaseModel):
 
 
 # Voreinstellungen, die eine ausbalancierte Mischung aus Kosten und Qualitaet bieten.
-DEFAULT_PLANNER = ModelSettings(model="gpt-4o-mini", temperature=0.1, max_tokens=1_000)
-DEFAULT_SEARCHER = ModelSettings(model="gpt-4o-mini", temperature=0.3, max_tokens=900)
-DEFAULT_WRITER = ModelSettings(model="gpt-4o-mini", temperature=0.2, max_tokens=2_000)
+DEFAULT_PLANNER = ModelSettings(model=PLANNER_MODEL_NAME, temperature=0.1, max_tokens=1_000)
+DEFAULT_SEARCHER = ModelSettings(model=SEARCH_MODEL_NAME, temperature=0.3, max_tokens=900)
+DEFAULT_WRITER = ModelSettings(model=WRITER_MODEL_NAME, temperature=0.2, max_tokens=2_000)
+DEFAULT_GUARD = ModelSettings(model=GUARD_MODEL, temperature=GUARD_TEMPERATURE, max_tokens=None)
 

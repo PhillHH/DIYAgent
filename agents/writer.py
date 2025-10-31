@@ -12,14 +12,11 @@ import logging
 from typing import List, Optional
 
 from openai import AsyncOpenAI
-from uuid import uuid4
 from pydantic import ValidationError
 
 from agents.model_settings import ModelSettings
 from agents.schemas import ReportData
 from config import OPENAI_API_KEY, OPENAI_TRACING_ENABLED
-from guards.output_guard import validate_report
-from guards.input_guard import is_diy
 from util.openai_tracing import traced_completion
 from util import extract_output_text
 
@@ -47,17 +44,21 @@ def _get_client() -> AsyncOpenAI:
 
 
 async def write_report(
-    query: str, search_results: List[str], settings: ModelSettings
+    query: str,
+    search_results: List[str],
+    settings: ModelSettings,
+    category: str | None = None,
 ) -> ReportData:
-    """Generiert einen strukturierten DIY-Report aus Rechercheergebnissen.
+    """Generiert einen strukturierten Report aus Rechercheergebnissen.
 
     Args:
         query: Urspruengliche Anwenderfrage.
         search_results: Liste der vom Search-Agent gelieferten Abschnitte.
         settings: Modellparameter fuer den Writer-Agenten.
+        category: Optionaler Guard-Hinweis (`DIY`, `KI_CONTROL`), beeinflusst das Prompt-Template.
 
     Raises:
-        ValueError: Bei fehlenden Ergebnissen oder Guardrail-Verletzungen.
+        ValueError: Bei fehlenden Rechercheergebnissen.
 
     Returns:
         Validiertes `ReportData`-Objekt mit Kurzfassung, Markdown und Nachfragen.
@@ -68,42 +69,21 @@ async def write_report(
 
     try:
         payload = json.dumps({"query": query, "search_results": search_results})
-        raw = await _invoke_writer_model(payload, settings)
+        messages = _compose_messages(payload, category)
+        raw = await _invoke_writer_model(messages, settings)
 
         cleaned_raw = _extract_json_block(raw)
         if len(cleaned_raw) > MAX_REPORT_LENGTH:
             cleaned_raw = cleaned_raw[: MAX_REPORT_LENGTH - len("[Gekuerzt]")] + "[Gekuerzt]"
 
         report = ReportData.model_validate_json(cleaned_raw)
-
-        if not validate_report(report.markdown_report):
-            snippet = report.markdown_report[:400].replace("\n", " ")
-            _LOGGER.warning("DIY-Guard hat Report abgelehnt: %s", snippet)
-            print("[Writer] Guard abgelehnt, Ausschnitt:", snippet)
-            hinted_report = report.model_copy(
-                update={
-                    "markdown_report": report.markdown_report
-                    + "\n\n> Hinweis: Dieses Premium-DIY-Dokument bezieht sich auf das konkrete Heimwerkerprojekt '"
-                    + query
-                    + "' und enthaelt zusaetzliche Hinweise zu Werkzeugen, Material, Laminat-Verlegung und Montage.",
-                }
-            )
-            if not validate_report(hinted_report.markdown_report):
-                if is_diy(query):
-                    _LOGGER.warning("DIY-Guard bleibt kritisch, Bericht wird dennoch ausgeliefert.")
-                    report = hinted_report
-                else:
-                    raise ValueError("Der Bericht wirkt nicht wie ein Heimwerker-Ergebnis")
-            else:
-                report = hinted_report
-
         return report
     except Exception as exc:  # pragma: no cover - Fehlerpfad fuer Diagnose
         _LOGGER.exception("Writer fehlgeschlagen: %s", exc)
         raise
 
 
-async def _invoke_writer_model(payload: str, settings: ModelSettings) -> str:
+async def _invoke_writer_model(messages: list[dict[str, str]], settings: ModelSettings) -> str:
     """Ruft das Reporterzeugende Modell auf und gibt einen JSON-String zurueck.
 
     Args:
@@ -115,25 +95,6 @@ async def _invoke_writer_model(payload: str, settings: ModelSettings) -> str:
     """
 
     client = _get_client()
-    system_prompt = (
-        "Du bist ein Heimwerker-Technikautor fuer Premium-Projekte. Erstelle einen ausfuehrlichen Markdown-Report (mindestens 1.800 bis 2.500 Woerter) mit folgenden Abschnitten: "
-        "1) H1-Projekttitel, 2) Executive Summary (5-7 Saetze), 3) Projektueberblick & Voraussetzungen, 4) Tabelle 'Material & Werkzeuge' mit Spalten Position, Spezifikation, Menge, Stueckpreis, Summe, "
-        "5) Schritt-fuer-Schritt-Anleitung (nummeriert, detailreich), 6) Zeit- & Kostenplan (Tabelle mit Puffer), 7) Qualitaetssicherung & typische Fehler, 8) Sicherheit (Schutz, Lueftung, Entsorgung), "
-        "9) Abschnitt 'Premium-Laminat' mit 3-5 kuratierten Optionen (Nutzungsklasse, Abriebklasse, Staerke, Klicksystem, Garantie, Preisspannen), 10) Pflege & Wartung, 11) FAQ. "
-        "Nutze klares Deutsch, sinnvolle Zwischenueberschriften (H2/H3), Tabellen, Listen und Zitat-Bloecke fuer Hinweise. Folge Fragen: Liefere 4-6 passende Nachfragen. "
-        "Antworte ausschließlich mit einem JSON-Objekt (kein Text davor oder danach) mit den Feldern short_summary, markdown_report, followup_questions."
-    )
-
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {
-            "role": "user",
-            "content": (
-                "Hier sind Anfrage und Zusammenfassungen als JSON:\n"
-                f"{payload}"
-            ),
-        },
-    ]
 
     kwargs = settings.to_openai_kwargs()
     chat_kwargs = {
@@ -207,5 +168,37 @@ def _extract_json_block(text: str) -> str:
         return cleaned
 
     return text
+
+
+def _compose_messages(payload: str, category: str | None) -> list[dict[str, str]]:
+    """Erstellt die Prompts fuer den Writer basierend auf der Kategorie."""
+
+    if category == "KI_CONTROL":
+        system_prompt = (
+            "Du bist ein KI-Governance-Analyst. Erstelle einen strukturierten Markdown-Report zur Steuerung und Evaluierung von KI-Agenten im Heimwerker-Kontext. "
+            "Pflichtabschnitte: 1) Ziel & Kontext, 2) Steuerbare Aspekte (Tools, Prompts, Guardrails), 3) Risiken & Mitigations, 4) Metriken (Halluzination, Coverage, Freshness), "
+            "5) Evaluationsplan (Testfaelle, Akzeptanzkriterien), 6) Governance (Freigaben, Logging, Tracing), 7) Empfehlungen & Roadmap, 8) FAQ. "
+            "Nutze sachliches Deutsch, klare Listen, Tabellen und Hervorhebungen. Antworte ausschließlich mit JSON (short_summary, markdown_report, followup_questions mit 4-6 Fragen)."
+        )
+    else:
+        system_prompt = (
+            "Du bist ein Heimwerker-Technikautor fuer Premium-Projekte. Erstelle einen ausfuehrlichen Markdown-Report (mindestens 1.800 bis 2.500 Woerter) mit folgenden Abschnitten: "
+            "1) H1-Projekttitel, 2) Executive Summary (5-7 Saetze), 3) Projektueberblick & Voraussetzungen, 4) Tabelle 'Material & Werkzeuge' mit Spalten Position, Spezifikation, Menge, Stueckpreis, Summe, "
+            "5) Schritt-fuer-Schritt-Anleitung (nummeriert, detailreich), 6) Zeit- & Kostenplan (Tabelle mit Puffer), 7) Qualitaetssicherung & typische Fehler, 8) Sicherheit (Schutz, Lueftung, Entsorgung), "
+            "9) Abschnitt 'Premium-Laminat' mit 3-5 kuratierten Optionen (Nutzungsklasse, Abriebklasse, Staerke, Klicksystem, Garantie, Preisspannen), 10) Pflege & Wartung, 11) FAQ. "
+            "Nutze klares Deutsch, sinnvolle Zwischenueberschriften (H2/H3), Tabellen, Listen und Zitat-Bloecke fuer Hinweise. Folge Fragen: Liefere 4-6 passende Nachfragen. "
+            "Antworte ausschließlich mit einem JSON-Objekt (kein Text davor oder danach) mit den Feldern short_summary, markdown_report, followup_questions."
+        )
+
+    return [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": (
+                "Hier sind Anfrage und Zusammenfassungen als JSON:\n"
+                f"{payload}"
+            ),
+        },
+    ]
 
 

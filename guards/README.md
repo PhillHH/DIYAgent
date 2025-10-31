@@ -1,24 +1,32 @@
 # Guards
 
 ## Zweck
-- Stellt Eingabe- und Ausgabepruefungen fuer den DIY-Flow bereit.
-- Verhindert fachfremde Anfragen bzw. nicht-DIY-konforme Berichte.
+- Stellt Eingabe- und Ausgabepruefungen fuer den DIY-/KI-Control-Flow bereit.
+- Klassifiziert Nutzeranfragen und auditiert Berichte ausschliesslich ueber LLMs.
 
 ## Schnittstellen / Vertraege
-- `validate_input(raw) -> (bool, str)` – trimmt und prueft leere Eingaben.
-- `is_diy(query) -> bool` – Keyword-Heuristik fuer Heimwerkerbezug.
-- `audit_output(text) -> (bool, str)` – Rueckgabewert `False` bei Guard-Verletzung.
-- `validate_report(md) -> bool` – ermittelt, ob Markdown DIY-Schluesselwoerter enthaelt.
+- `classify_query_llm(query, settings) -> InputGuardResult` – Kategorien `DIY`, `KI_CONTROL`, `REJECT`.
+- `audit_report_llm(query, report_md, settings) -> OutputGuardResult` – Policy-Check fuer finalen Markdown (`allowed`, `issues`, `category`).
+- Die historischen Heuristiken (`is_diy`, `validate_report`) stehen noch fuer Legacy-Zwecke bereit, werden aber im Orchestrator nicht mehr genutzt.
 
 ## Beispielablauf
-1. `plan_searches` ruft `is_diy`, um fachfremde Queries direkt abzulehnen.
-2. `write_report` prueft mit `validate_report`, ob der generierte Markdown DIY-Aspekte enthaelt.
-3. `send_email` nutzt `validate_report`, bevor HTML versendet wird.
+1. `run_job` ruft `classify_query_llm` auf. `REJECT` → Job endet mit Status „rejected“ und Begruendung.
+2. Bei `DIY` oder `KI_CONTROL` durchlaeuft der Flow Planung, Recherche, Writer (ggf. Template-Wechsel fuer KI_CONTROL).
+3. Anschliessend prueft `audit_report_llm` den Markdown. `allowed=False` → Job stoppt mit „Policy: …“.
+
+## LLM-Input-Guard
+- Prompt klassifiziert eindeutig in `DIY`, `KI_CONTROL`, `REJECT` (Meta-Themen wie Guardrails fallen unter `KI_CONTROL`).
+- Antwort wird als JSON-Schema eingefordert; Parsing-Fehler oder API-Probleme fuehren zu `RuntimeError("Input-Guard nicht verfügbar")`.
+
+## LLM-Output-Guard
+- Bewertet den finalen Markdown hinsichtlich Sicherheits-/Policy-Anforderungen.
+- Erlaubt DIY-Inhalte sowie Meta-Analysen zur KI-Steuerung; verbietet riskante Anleitungen ohne Fachkraft/Warnhinweise, medizinische & finanzielle Beratung, PII.
+- Liefert JSON (`allowed`, `category`, `issues`); Fehler resultieren in `RuntimeError("Output-Guard nicht verfügbar")`.
 
 ## Grenzen & Annahmen
-- Heuristik basiert auf statischer Keyword-Liste → regelmaessig aktualisieren.
-- Kann false positives bzw. negatives liefern; KI-Modelle sollen Guardrail-Hinweise ebenfalls beachten.
+- LLM-Guards setzen eine funktionierende OpenAI-API voraus; bei Ausfall bricht die Pipeline mit `phase="error"` ab.
+- Prompt-Feintuning ist entscheidend, um Fehlklassifikationen zu vermeiden. Tracing (`OPENAI_TRACE_*`) hilft beim Debugging.
 
 ## Wartungshinweise
-- Erweiterungen der Keyword-Listen sorgfaeltig pruefen (Tests ergaenzen).
-- Bei komplexeren Anforderungen zukünftig mit regelbasierten oder modellgestuetzten Klassifikatoren kombinieren.
+- Regelmässig Prompts und Antwortschemas pruefen (z. B. via OpenAI-Traces).
+- Bei Modellwechsel Guard-Modelle in `.env` (`GUARD_MODEL`, `GUARD_TEMPERATURE`) anpassen.

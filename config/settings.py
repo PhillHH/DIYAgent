@@ -41,6 +41,9 @@ OPENAI_TRACING_ENABLED = _as_bool(
 OPENAI_TRACE_RAW = _as_bool(os.getenv("OPENAI_TRACE_RAW", "false"))
 LOG_DIR = os.getenv("LOG_DIR", "logs")
 OPENAI_WEB_TOOL_TYPE = os.getenv("OPENAI_WEB_TOOL_TYPE", "web_search_preview")
+LLM_GUARDS_ENABLED = _as_bool(os.getenv("LLM_GUARDS_ENABLED", "true"))
+GUARD_MODEL = os.getenv("GUARD_MODEL", "gpt-4o-mini")
+GUARD_TEMPERATURE = float(os.getenv("GUARD_TEMPERATURE", "0.0"))
 
 # --- Planner/Search/Writer Parameter ---
 HOW_MANY_SEARCHES = int(os.getenv("HOW_MANY_SEARCHES", "3"))
@@ -51,6 +54,6 @@ REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30"))
 CONCURRENCY_SEMAPHORE = MAX_CONCURRENCY
 DEFAULT_TIMEOUT = REQUEST_TIMEOUT
 
-PLANNER_MODEL_NAME = os.getenv("PLANNER_MODEL_NAME", "lab-planner-001")
-SEARCH_MODEL_NAME = os.getenv("SEARCH_MODEL_NAME", "lab-search-001")
-WRITER_MODEL_NAME = os.getenv("WRITER_MODEL_NAME", "lab-writer-001")
+PLANNER_MODEL_NAME = os.getenv("PLANNER_MODEL_NAME", "gpt-4o-mini")
+SEARCH_MODEL_NAME = os.getenv("SEARCH_MODEL_NAME", "gpt-4o-mini")
+WRITER_MODEL_NAME = os.getenv("WRITER_MODEL_NAME", "gpt-4o-mini")

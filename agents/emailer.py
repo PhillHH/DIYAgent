@@ -17,7 +17,6 @@ from markdown import markdown as md_to_html
 
 from agents.schemas import ReportData
 from config import FROM_EMAIL, SENDGRID_API_KEY
-from guards.output_guard import validate_report
 
 MAX_EMAIL_SIZE = 500_000  # Zeichenbegrenzung fuer HTML-Inhalt
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -56,10 +55,6 @@ async def send_email(report: ReportData, to_email: str) -> dict:
 
     if not EMAIL_REGEX.match(to_email or ""):
         raise ValueError("Die Zieladresse ist ungueltig")
-
-    # Guardrail: Der Markdown-Inhalt muss weiterhin DIY-konform sein.
-    if not validate_report(report.markdown_report):
-        raise ValueError("Der Report scheint nicht DIY-konform zu sein")
 
     html_content = _render_html(report)
     if len(html_content) > MAX_EMAIL_SIZE:

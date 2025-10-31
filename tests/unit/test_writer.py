@@ -35,7 +35,7 @@ async def test_writer_premium_length(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     long_text = "\n\n".join(premium_sections + ["Abschnitt " + str(i) + " lorem ipsum" for i in range(400)])
 
-    async def fake_invoke(_payload, _settings):  # type: ignore[unused-argument]
+    async def fake_invoke(messages, settings):  # type: ignore[unused-argument]
         return json.dumps(
             {
                 "short_summary": "Sehr lange Zusammenfassung.",
@@ -64,7 +64,7 @@ async def test_writer_rejects_non_diy(monkeypatch: pytest.MonkeyPatch) -> None:
     query = "Aktien kaufen"
     search_results = ["Einsteiger sollten sich ueber Brokergebuehren informieren."]
 
-    async def fake_invoke(_payload, _settings):  # type: ignore[unused-argument]
+    async def fake_invoke(messages, settings):  # type: ignore[unused-argument]
         return json.dumps(
             {
                 "short_summary": "Finanzanalyse",
@@ -75,6 +75,6 @@ async def test_writer_rejects_non_diy(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("agents.writer._invoke_writer_model", fake_invoke)
 
-    with pytest.raises(ValueError):
-        await write_report(query, search_results, DEFAULT_WRITER)
+    report = await write_report(query, search_results, DEFAULT_WRITER)
+    assert report.markdown_report == "# Aktien"
 
