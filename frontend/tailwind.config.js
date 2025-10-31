@@ -1,21 +1,9 @@
-import colors from "tailwindcss/colors";
+import forms from "@tailwindcss/forms";
+import typography from "@tailwindcss/typography";
 
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
-  theme: {
-    extend: {
-      fontFamily: {
-        sans: ["Inter", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
-      },
-      colors: {
-        slate: colors.slate,
-        sky: colors.sky,
-        emerald: colors.emerald,
-        rose: colors.rose,
-      },
-    },
-  },
-  plugins: [],
+  plugins: [forms(), typography()],
 };

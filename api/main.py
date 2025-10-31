@@ -17,9 +17,8 @@ _SETTINGS_BUNDLE = SettingsBundle()
 
 app.add_middleware(
     CORSMiddleware,
-    # Erlaubt dem lokalen Vite-Frontend den direkten Zugriff auf die API (Port 517x).
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):517\d",
+    # Erlaubt dem lokalen Vite-Frontend den direkten Zugriff auf die API (Port 5173).
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

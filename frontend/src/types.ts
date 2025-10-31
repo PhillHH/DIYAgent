@@ -20,3 +20,11 @@ export interface StatusResponse {
   phase: StatusPhase;
   detail: string | null;
 }
+
+export type UiState =
+  | { kind: "idle" }
+  | { kind: "submitting" }
+  | { kind: "running"; jobId: string; phase: Phase; detail?: string | null }
+  | { kind: "done"; jobId: string }
+  | { kind: "rejected"; jobId: string; detail: string | null }
+  | { kind: "error"; message: string };
