@@ -1,5 +1,10 @@
 # Orchestrator
 
+## Schnellzugriff
+- [Projekt-Docs-Index](../README.md#dokumentation--navigation)
+- [Guards](../guards/README.md) – Input-/Output-Policies
+- [Agents](../agents/README.md) – Planner/Search/Writer/Emailer
+
 ## Zweck
 - Verknuepft alle Agenten zu einem asynchronen DIY-/KI-Control-Research-Flow.
 - Persistiert Statusinformationen fuer Clients, die den Fortschritt abfragen.

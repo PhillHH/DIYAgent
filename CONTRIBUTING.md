@@ -6,7 +6,7 @@
 - Guardrails nicht entfernen, sondern bei Bedarf erweitern.
 
 ## Tests
-- Vor jedem PR `python -m pytest tests/unit tests/integration` ausführen.
+- Vor jedem PR `python -m pytest tests/unit tests/integration` ausführen (Details siehe [`tests/README.md`](tests/README.md)).
 - Neue Features mit passenden Unit- oder Integrationstests absichern.
 
 ## Commits
@@ -18,5 +18,5 @@
 - `.env` in lokalen Umgebungen halten; Beispielformate in `config/.env.example` pflegen.
 
 ## Review-Hinweise
-- Prüfen, ob DIY-Guardrails weiterhin greifen.
-- Bei Modellwechseln stets `agents/model_settings.py` und Dokumentation aktualisieren.
+- Prüfen, ob DIY-/KI-Control-Guardrails weiterhin greifen (siehe [`guards/README.md`](guards/README.md)).
+- Bei Modellwechseln stets `agents/model_settings.py` und Dokumentation aktualisieren (`agents/README.md`, `config/README.md`).

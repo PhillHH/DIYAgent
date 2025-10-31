@@ -1,9 +1,32 @@
 # Deep Research Agent
 
+> Navigiere direkt zu den Detail-Dokumentationen über den folgenden Index.
+
+## Dokumentation & Navigation
+- **Überblick**
+  - [Projektzweck](#zweck)
+  - [Architektur](#architektur-textdiagramm)
+  - [Premium-E-Mail-Report](#premium-e-mail-report)
+  - [LLM-Guards](#llm-guards)
+- **Backend**
+  - [`api/README.md`](api/README.md) – FastAPI-Endpunkte & CORS
+  - [`orchestrator/README.md`](orchestrator/README.md) – Joblauf & Statusmodell
+  - [`guards/README.md`](guards/README.md) – Input/Output-Guard-Prompts
+  - [`agents/README.md`](agents/README.md) – Planner/Search/Writer/Emailer
+  - [`config/README.md`](config/README.md) – Einstellungen & .env-Variablen
+  - [`util/README.md`](util/README.md) – OpenAI-Tracing & Hilfsfunktionen
+- **Frontend**
+  - [`frontend/README.md`](frontend/README.md) – Vite/Tailwind-Setup & UI-Flow
+- **Werkzeuge & Prozesse**
+  - [`scripts/README.md`](scripts/README.md) – Dev-Skripte & E2E-Probe
+  - [`tests/README.md`](tests/README.md) – Teststrategie & Abdeckung
+  - [`CONTRIBUTING.md`](CONTRIBUTING.md) – Beitragende & Coding-Guides
+  - [`CHANGELOG.md`](CHANGELOG.md) – Historie relevanter Änderungen
+
 ## Zweck
 - KI-gestuetztes System fuer heimwerkerbezogene Recherche, Zusammenfassung und E-Mail-Versand.
 - Modulare Agenten (Planer, Rechercheur, Autor, E-Mailer) bilden einen vollständigen End-to-End-Flow.
-- DIY-Guardrails stellen sicher, dass fachfremde Anfragen automatisch abgelehnt werden.
+- LLM-basierte Guardrails stellen sicher, dass fachfremde oder policy-widrige Anfragen automatisch abgelehnt werden.
 
 ## Architektur (Textdiagramm)
 ```
@@ -35,8 +58,8 @@ Status-Store <- FastAPI (/status/{job_id})
 - Einzeltest, z. B. Planner: `python -m pytest tests/unit/test_planner.py`
 
 ## End-to-End-Ablauf (lokal)
-1. FastAPI starten: `uvicorn api.main:app --reload`
-2. Probelauf: `python scripts/e2e_probe.py --email deine.mail@example.com`
+1. Backend starten: `scripts\dev.ps1` (PowerShell) oder `./scripts/dev.sh` (POSIX) → Uvicorn auf `127.0.0.1:8005`.
+2. Probelauf: `python scripts/e2e_probe.py --email deine.mail@example.com --base-url http://127.0.0.1:8005`.
 3. Skript pollt `/status/{job_id}` und zeigt Phasen an; Exit-Code `0` bei Erfolg, sonst `1`.
 
 ## Lokaler Start (Venv)
@@ -44,6 +67,7 @@ Status-Store <- FastAPI (/status/{job_id})
   - PowerShell: `scripts\dev.ps1`
   - POSIX (bash/zsh): `./scripts/dev.sh`
 - Somit wird `uvicorn api.main:app --reload` mit aktivierter `.venv`-Umgebung gestartet; ohne dies kann `ModuleNotFoundError: No module named 'markdown'` auftreten, weil der Reload-Prozess sonst den globalen Python-Interpreter nutzt.
+- Default-Port ist `8005`; via `-Port` (PowerShell) bzw. `PORT`-Umgebungsvariable (POSIX) anpassbar.
 - Hinweis: Globale `PYTHONPATH`-Änderungen oder `use-pep582`-Flags sollten deaktiviert bleiben, damit die Venv-Erkennung konsistent funktioniert.
 
 ## Troubleshooting
@@ -75,11 +99,11 @@ Status-Store <- FastAPI (/status/{job_id})
 - Datenschutz: Kompletttraces koennen sensible Inhalte enthalten. In Produktion `OPENAI_TRACE_RAW=false` oder Tracing abschalten.
 
 ## Premium-E-Mail-Report
-- Aufbau: Writer generiert 1.800–2.500 Woerter mit Premium-Struktur (Executive Summary, Tabellen fuer Material/Zeiten, Sicherheitskapitel, Premium-Laminat-Vergleich, FAQ).
-- Rendering: Emailer wandelt Markdown in typografisch formatiertes HTML mit Inhaltsverzeichnis, Tabellen-Styles (class="table"), Dark-Mode-Optimierung und Hinweisblöcken.
+- Aufbau: Writer generiert 1.800–2.500 Woerter mit Premium-Struktur (Executive Summary, Materialien- & Zeitpläne, Sicherheitskapitel, Premium-Laminat-Vergleich, FAQ).
+- Rendering: Emailer wandelt Markdown in typografisch formatiertes HTML mit Inhaltsverzeichnis, Tabellen-Styles (`class="table"`), Dark-Mode-Optimierung und Hinweisblöcken.
 - Konfiguration: `.env` optional `OPENAI_WEB_TOOL_TYPE` fuer Websuche, `OPENAI_TRACING_ENABLED` fuer Plattform-Traces, `OPENAI_TRACE_RAW` fuer lokale Loginspektion.
-- Limits & Performance: MAX_EMAIL_SIZE 500 KB; lange Inhalte werden nicht gekürzt. Bei grossen Projekten kann das Rendern einige Sekunden dauern.
-- Troubleshooting: 400er von OpenAI → Tool-Type pruefen (`web_search_preview`, `web_search_preview_2025_03_11`), bei SendGrid-401 API-Key und Berechtigungen validieren. Beispiel-Screenshot folgt im separaten `docs/`-Ordner.
+- Limits & Performance: `MAX_EMAIL_SIZE` 500 KB; lange Inhalte werden nicht gekürzt. Bei grossen Projekten kann das Rendern einige Sekunden dauern.
+- Troubleshooting: 400er von OpenAI → Tool-Type pruefen (`web_search_preview`, `web_search_preview_2025_03_11`), bei SendGrid-401 API-Key und Berechtigungen validieren. Beispiel-Screenshots folgen im geplanten `docs/`-Ordner.
 
 ## LLM-Guards
 - Input: `classify_query_llm` klassifiziert Anfragen (`DIY`, `KI_CONTROL`, `REJECT`). REJECT stoppt den Job sofort, KI_CONTROL aktiviert das Governance-Template im Writer.

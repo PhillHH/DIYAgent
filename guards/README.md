@@ -1,5 +1,10 @@
 # Guards
 
+## Schnellzugriff
+- [Projekt-Docs-Index](../README.md#dokumentation--navigation)
+- [Orchestrator](../orchestrator/README.md) – Phasen & Guard-Einbindung
+- [Agents](../agents/README.md) – Writer-Template je Kategorie
+
 ## Zweck
 - Stellt Eingabe- und Ausgabepruefungen fuer den DIY-/KI-Control-Flow bereit.
 - Klassifiziert Nutzeranfragen und auditiert Berichte ausschliesslich ueber LLMs.
@@ -7,7 +12,6 @@
 ## Schnittstellen / Vertraege
 - `classify_query_llm(query, settings) -> InputGuardResult` – Kategorien `DIY`, `KI_CONTROL`, `REJECT`.
 - `audit_report_llm(query, report_md, settings) -> OutputGuardResult` – Policy-Check fuer finalen Markdown (`allowed`, `issues`, `category`).
-- Die historischen Heuristiken (`is_diy`, `validate_report`) stehen noch fuer Legacy-Zwecke bereit, werden aber im Orchestrator nicht mehr genutzt.
 
 ## Beispielablauf
 1. `run_job` ruft `classify_query_llm` auf. `REJECT` → Job endet mit Status „rejected“ und Begruendung.
@@ -24,7 +28,7 @@
 - Liefert JSON (`allowed`, `category`, `issues`); Fehler resultieren in `RuntimeError("Output-Guard nicht verfügbar")`.
 
 ## Grenzen & Annahmen
-- LLM-Guards setzen eine funktionierende OpenAI-API voraus; bei Ausfall bricht die Pipeline mit `phase="error"` ab.
+- LLM-Guards setzen eine funktionierende OpenAI-API voraus; bei Ausfall bricht die Pipeline mit `phase="error"` ab (kein heuristischer Fallback mehr).
 - Prompt-Feintuning ist entscheidend, um Fehlklassifikationen zu vermeiden. Tracing (`OPENAI_TRACE_*`) hilft beim Debugging.
 
 ## Wartungshinweise

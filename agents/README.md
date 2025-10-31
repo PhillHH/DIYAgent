@@ -1,36 +1,43 @@
 # Agents
 
+## Schnellzugriff
+- [Orchestrator-Flow](../orchestrator/README.md) – Wie Planner, Search, Writer & Emailer kombiniert werden
+- [Guards](../guards/README.md) – Input-/Output-Validierung inkl. Kategorien
+- [Model-Settings](model_settings.py) – Standardparameter der OpenAI-Clients
+
 ## Zweck
-- Planner, Search, Writer und Emailer bilden den fachlichen Kern der DIY-Recherche.
-- KI-Modelle (OpenAI) werden genutzt, um strukturiert zu planen, Inhalte zusammenzufassen und Berichte zu verfassen.
-- Emailer verpackt den Bericht in HTML und versendet ihn ueber SendGrid.
+- Planner, Search, Writer und Emailer bilden den fachlichen Kern der DIY-/KI-Control-Recherche.
+- KI-Modelle (OpenAI) planen Suchstrategien, konsolidieren Webinhalte und erzeugen Premium-Markdown-Reports.
+- Der Emailer rendert den Report in hochwertiges HTML und versendet ihn via SendGrid.
 
 ## Schnittstellen / Vertraege
 - `plan_searches(query, settings) -> WebSearchPlan`
 - `perform_searches(plan, settings) -> list[str]`
 - `write_report(query, search_results, settings, category=None) -> ReportData`
 - `send_email(report, to_email) -> dict`
-- Alle Funktionen werfen `ValueError` bei Guardrail-Verletzungen und propagieren `RuntimeError` fuer externe Fehler.
+
+Alle Funktionen werfen `ValueError` bei Guardrail-Verletzungen und propagieren `RuntimeError` fuer externe Fehler (z. B. API-Timeouts).
 
 ## Writer-Varianten (DIY vs. KI_CONTROL)
-- **DIY**: Premium-Markdown mit Executive Summary, Material-Tabellen, Schrittfolgen, Sicherheit, Premium-Laminat, FAQ.
-- **KI_CONTROL**: Analysebericht zu Steuerbarkeit/Evaluierung von KI (Abschnitte: Ziel & Kontext, Steuerbare Aspekte, Risiken, Metriken, Evaluationsplan, Governance, Empfehlungen & Roadmap, FAQ).
-- Die Kategorie wird vom LLM-Input-Guard bestimmt und in `run_job` weitergereicht.
+- **DIY**: Premium-Markdown mit Executive Summary, Material-/Kosten-Tabellen, Schrittfolgen, Sicherheitsabschnitten, Premium-Laminat-Optionen, FAQ und Pflegehinweisen.
+- **KI_CONTROL**: Governance-/Evaluationsbericht mit Sektionen zu Ziel & Kontext, steuerbaren Aspekten, Risiken, Metriken, Testplan, Governance und Roadmap.
+- Die Kategorie wird ausschließlich vom LLM-Input-Guard geliefert und unverändert bis zum Writer durchgereicht.
 
 ## Beispielablauf
 1. LLM-Input-Guard klassifiziert die Anfrage (`DIY`, `KI_CONTROL`, `REJECT`).
-2. Planner (OpenAI, `gpt-4o-mini`) erzeugt Suchaufgaben.
-3. Search fasst pro Item 2–3 Absätze zusammen (Temperatur 0.3), paralleler Aufruf durch `AsyncLimiter` begrenzt.
-4. Writer erstellt JSON-Report und validiert Inhalte (DIY-Gruen, KI_CONTROL-ohne DIY-Heuristik).
-5. LLM-Output-Guard prueft den Markdown auf Policies, danach versendet der Emailer das HTML.
+2. Planner (Standardmodell `gpt-4o-mini`) erzeugt ein `WebSearchPlan`-Objekt.
+3. Search führt parallele OpenAI-Websuchen durch, fasst Ergebnisse als Freitext zusammen und extrahiert Kernbefunde.
+4. Writer generiert `ReportData` im JSON-Format (Markdown + Kurzfassung + 4–6 Follow-up-Fragen).
+5. LLM-Output-Guard auditiert den Markdown gegen Policy-Anforderungen.
+6. Emailer rendert und versendet das HTML; SendGrid-Antwort wird an den Orchestrator zurückgegeben.
 
 ## Grenzen & Annahmen
-- DIY-Erkennung erfolgt primär über den LLM-Input-Guard; bei Fallback greift eine Keyword-Heuristik.
-- OpenAI-Modelle liefern teilweise Codeblöcke → Parser entfernt Begrenzungen.
-- SendGrid-Key muss Mail-Send-Rechte haben; Absenderadresse muss verifiziert sein.
-- Summaries basieren auf Modellwissen, solange kein WebSearch-Tool aktiv ist.
+- Die Guards sind harte Abhängigkeiten – fällt der OpenAI-Call aus, bricht der Gesamtjob mit `status="error"` ab.
+- Modelle liefern teilweise Codeblöcke → `_extract_json_block` in Planner/Writer entfernt Einbettungen robust.
+- SendGrid erfordert verifizierte Absenderadresse; Fehler (401/403) werden bis zum Orchestrator propagiert.
+- Websuche setzt das OpenAI-Web-Tool voraus; Response-Größen orientieren sich an `SEARCH_CONTEXT_SIZE`.
 
 ## Wartungshinweise
-- Modellnamen/Parameter zentral in `agents/model_settings.py` aendern.
-- Guardrail-Prompts in `guards/llm_*` regelmaessig evaluieren (siehe Tracing-Logs).
-- Bei Parser-Fehlern (JSON) Prompts verfeinern oder `_extract_json_block` erweitern.
+- Modellnamen und Temperatureinstellungen zentral in `model_settings.py` pflegen (inkl. `DEFAULT_GUARD`).
+- Prompt-Anpassungen in `planner.py`, `search.py`, `writer.py` sowie `guards/llm_*` stets gemeinsam testen (siehe `tests/unit`).
+- Bei JSON-Parsing-Problemen `_extract_json_block` erweitern oder Response-Formate strenger via `response_format` definieren.
