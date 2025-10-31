@@ -16,7 +16,6 @@ from uuid import uuid4
 from agents.model_settings import ModelSettings
 from agents.schemas import WebSearchPlan, WebSearchItem
 from config import HOW_MANY_SEARCHES, OPENAI_API_KEY, OPENAI_TRACING_ENABLED
-from guards.input_guard import is_diy
 from util.openai_tracing import traced_completion
 from util import extract_output_text
 
@@ -55,9 +54,6 @@ async def plan_searches(query: str, settings: ModelSettings) -> WebSearchPlan:
     Returns:
         Validiertes `WebSearchPlan`-Objekt mit exakt `HOW_MANY_SEARCHES` Eintraegen.
     """
-
-    if not is_diy(query):
-        raise ValueError("Nur DIY-/Heimwerker-Anfragen sind erlaubt.")
 
     last_error: Exception | None = None
     for attempt in range(3):

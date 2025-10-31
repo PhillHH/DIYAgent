@@ -50,7 +50,9 @@ async def classify_query_llm(query: str, settings: ModelSettings | None) -> Inpu
             "role": "system",
             "content": (
                 "Klassifiziere die Nutzeranfrage eindeutig: DIY, KI_CONTROL (Meta-Themen wie KI-Steuerung/Evaluierung, Guardrails, Orchestrierung), "
-                "REJECT (alles andere). Antworte nur als JSON mit den Feldern 'category' und 'reasons' (Liste von Begruendungen)."
+                "REJECT (alles andere). DIY umfasst klassische Heimwerker-Arbeiten in Haus, Wohnung oder Garten (z. B. Laminat verlegen, Waschbecken tauschen, Regale montieren, Streichen, Reparaturen). "
+                "Nur REJECT, wenn es um fachfremde Themen wie Medizin, Finanzen, kontroverse Politik, illegale Inhalte oder riskante Arbeiten geht, die ohne Fachkraft nicht erlaubt sind. "
+                "Antworte nur als JSON mit den Feldern 'category' und 'reasons' (Liste von Begruendungen)."
             ),
         },
         {"role": "user", "content": query},

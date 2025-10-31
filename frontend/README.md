@@ -1,20 +1,49 @@
-# Frontend (Placeholder)
+# DIY Research Agent – Frontend
 
-## Zweck
-- Reservierter Platz fuer ein kuenftiges Web-UI zum Starten und Monitoren von Jobs.
+Vite + React + TypeScript als leichtgewichtiges UI für den DIY Research Agent. Das Projekt stellt ein Formular zum Anfordern von DIY-Reports bereit und dient als Ausgangspunkt für zukünftige API-Integration.
 
-## Schnittstellen / Vertraege
-- Geplante API-Aufrufe: `POST /start_research`, `GET /status/{job_id}`.
-- Polling-Intervall voraussichtlich 2 Sekunden, angelehnt an `scripts/e2e_probe.py`.
+## Voraussetzungen
+- Node.js 18+
+- npm 9+
 
-## Beispielablauf
-- Nutzer gibt Query + E-Mail ein → UI sendet POST-Request → zeigt Job-ID + Statuspolling.
+## Setup
+```bash
+# Abhängigkeiten installieren
+npm install
+```
 
-## Grenzen & Annahmen
-- Noch keine Implementierung; Validierung und UX folgen im späteren Projektstand.
-- Backend muss laufen und CORS-Regeln definieren.
+TailwindCSS ist bereits vorkonfiguriert. Weitere Envs können in `.env.development` gepflegt werden (Standard: `VITE_API_BASE=http://127.0.0.1:8005`).
 
-## Wartungshinweise
-- Bei Start des UI gelieferten Abschnitt aktualisieren.
-- UX-Richtlinien (Guardrails sichtbar machen, Fehlermeldungen deutschsprachig) dokumentieren, sobald umgesetzt.
+## Entwicklung starten
+```bash
+npm run dev
+```
+Der Vite-Dev-Server läuft anschließend (Standard: http://localhost:5173). Die Backend-API wird über `VITE_API_BASE` angesprochen.
 
+## Nützliche Scripts
+- `npm run dev` – Entwicklungsserver mit HMR
+- `npm run build` – Produktionsbuild erzeugen
+- `npm run preview` – lokalen Preview-Server starten
+- `npm run lint` – ESLint prüfen
+
+## Projektstruktur
+```
+frontend/
+├── src/
+│   ├── api.ts          # Axios-Client + Placeholder-Endpunkte
+│   ├── App.tsx         # UI-Skeleton für Formular & Status
+│   ├── App.css         # Basis-Styles
+│   ├── main.tsx        # React-Entry-Point
+│   ├── types.ts        # Gemeinsame Typdefinitionen
+│   └── index.css       # Globale Basestyles
+├── .env.development    # Vite-Env mit VITE_API_BASE
+├── index.html          # HTML-Template
+└── README.md           # Dieses Dokument
+```
+
+## Weitere Schritte
+- API-Aufrufe mit Fehlerbehandlung ergänzen, sobald Backend-Endpunkte stabil sind.
+- Statuspolling (z. B. via `getStatus`) implementieren.
+- UI verfeinern (Loading-States, Validierung, Feedbackmeldungen).
+- Optional Authentifizierung/Autorisierung vorsehen.
+- CORS im Backend muss `http://localhost:5173` erlauben (bereits in FastAPI hinterlegt).

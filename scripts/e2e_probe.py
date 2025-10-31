@@ -104,7 +104,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """Erzeugt den CLI-Argumentparser."""
 
     parser = argparse.ArgumentParser(description="End-to-End-Probe fuer die DIY-Pipeline")
-    parser.add_argument("--base-url", default="http://localhost:8000", help="Basis-URL der API")
+    parser.add_argument("--base-url", default="http://127.0.0.1:8005", help="Basis-URL der API")
     parser.add_argument(
         "--query",
         default="Laminat in 20 qm verlegen - Arbeitsschritte und Materialliste",

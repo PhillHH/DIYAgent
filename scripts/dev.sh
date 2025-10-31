@@ -2,7 +2,7 @@
 set -euo pipefail
 
 HOST=${HOST:-127.0.0.1}
-PORT=${PORT:-8000}
+PORT=${PORT:-8005}
 
 if [[ ! -d '.venv' ]]; then
   echo "[dev.sh] Virtuelle Umgebung .venv nicht gefunden." >&2
