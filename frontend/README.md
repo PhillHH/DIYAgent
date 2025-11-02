@@ -47,7 +47,7 @@ Weitere Assets (z. B. Icons von `lucide-react`) werden direkt in den Komponenten
 ## State-Handling & Polling
 - Neue Jobs erzeugen einen `AbortController`, laufende Anfragen werden beim erneuten Absenden sauber abgebrochen.
 - Polling-Intervall 2000 ms, exponentieller Backoff bis max. 30 s bei 429/5xx.
-- Statusbanner & Toasts zeigen Übergänge (`done`, `error`, `rejected`) in deutscher Sprache.
+- Statusbanner & Toasts zeigen Übergänge (`done`, `error`, `rejected`) in deutscher Sprache. Bei `done` kann optional `payload.email_links` (Bauhaus-Links) angezeigt/verarbeitet werden.
 
 ## Styling & Interaktionen
 - Tailwind CSS v4 + `@tailwindcss/forms`/`@tailwindcss/typography`.

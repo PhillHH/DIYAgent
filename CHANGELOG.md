@@ -7,6 +7,19 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert. Forma
 - Neue README-Dateien für `config/`, `util/` und `tests/`.
 - Initialer `CHANGELOG.md`.
 
+## [2025-11-01]
+### Hinzugefügt
+- Branded Premium-E-Mail-Template mit Header, Gradient, Dark-Mode und CTA; Bauhaus-Einkaufsliste als HTML-Sektion.
+- LLM-gestützte Produktsuche (Bauhaus) inkl. Tracking-Filter und Übergabe an Writer/Emailer.
+- Status-Payload (`payload.email_links`) sowie E2E-Probe, die Bauhaus-Links im Versand überprüft.
+- Zusätzliche Tests (`test_email_branding`, `test_email_links`, `test_search_products`, `test_guard_links_toc`, `test_writer_sections`).
+- Neues `models/types.py` mit `ProductItem` sowie URL-Sanitizer für Bauhaus-Links; Writer/Emailer erzeugen nur noch reale Einkaufslisten ohne Platzhalter.
+
+### Geändert
+- Writer-Prompt: Internes Inhaltsverzeichnis (nur `#`-Anker), Einkaufsliste Bauhaus, Prüfkriterien je Schritt, Laminat-Block entfernt.
+- Output-Guard: Händler-Links erlaubt, nur `mail.google.com` wird blockiert; OpenAI-Tracing markiert `search_products`/`writer_email`.
+- Dokumentation (README, Agents, Guards, API, Frontend, Scripts, Tests) um Branding-, Produktlink- und ToC-Richtlinien erweitert.
+
 ## [2025-10-31]
 ### Hinzugefügt
 - Premium-E-Mail-Report mit High-End-Markdown-Template und HTML-Renderer (Typografie, TOC, Dark Mode).

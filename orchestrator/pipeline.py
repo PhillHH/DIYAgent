@@ -50,6 +50,7 @@ async def run_job(
     """
 
     bundle = settings_bundle or SettingsBundle()
+    job_context: dict[str, object] = {}
 
     try:
         set_status(job_id, "planning", None)
@@ -64,10 +65,22 @@ async def run_job(
         plan = await plan_searches(query, bundle.planner)
 
         set_status(job_id, "searching", None)
-        summaries = await perform_searches(plan, bundle.searcher)
+        summaries, product_results = await perform_searches(
+            plan,
+            bundle.searcher,
+            user_query=query,
+            category=guard_result.category,
+        )
+        job_context["product_results"] = [item.model_dump() for item in product_results]
 
         set_status(job_id, "writing", None)
-        report = await write_report(query, summaries, bundle.writer, category=guard_result.category)
+        report = await write_report(
+            query,
+            summaries,
+            bundle.writer,
+            category=guard_result.category,
+            product_results=product_results,
+        )
 
         audit = await audit_report_llm(query, report.markdown_report, bundle.guard)
         if not audit.allowed:
@@ -75,9 +88,24 @@ async def run_job(
             return
 
         set_status(job_id, "email", None)
-        await send_email(report, to_email)
+        email_result = await send_email(
+            report,
+            to_email,
+            product_results=product_results,
+        )
 
-        set_status(job_id, "done", None)
+        bauhaus_links = [
+            link
+            for link in email_result.get("links", [])
+            if isinstance(link, str) and "bauhaus" in link.lower()
+        ]
+        payload = {
+            "email_links": bauhaus_links,
+            "email_preview": email_result.get("html_preview"),
+            "product_results": job_context.get("product_results"),
+        }
+
+        set_status(job_id, "done", None, payload=payload)
     except Exception as error:  # pragma: no cover - Fehlerszenarien in Produktion loggen
         set_status(job_id, "error", str(error))
 

@@ -35,9 +35,15 @@ async def test_search_payload_without_forbidden_keys(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(search_module, "_get_client", lambda: fake_client)
 
-    result = await search_module.perform_searches(plan, DEFAULT_SEARCHER)
+    summaries, product_results = await search_module.perform_searches(
+        plan,
+        DEFAULT_SEARCHER,
+        user_query="Laminate verlegen",
+        category=None,
+    )
 
-    assert result[0] == "Zusammenfassung"
+    assert summaries == ["Zusammenfassung"]
+    assert product_results == []
     payload = recorded["payload"]
     assert "tool_choice.name" not in payload
     assert "tool_choice.tool" not in payload
@@ -65,9 +71,15 @@ async def test_search_fallback_without_tool_choice(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(search_module, "_get_client", lambda: fake_client)
 
-    result = await search_module.perform_searches(plan, DEFAULT_SEARCHER)
+    summaries, product_results = await search_module.perform_searches(
+        plan,
+        DEFAULT_SEARCHER,
+        user_query="Laminate verlegen",
+        category=None,
+    )
 
-    assert result[0] == "Fallback"
+    assert summaries == ["Fallback"]
+    assert product_results == []
     assert attempts[0]["tool_choice"] == "auto"
     assert "tool_choice" not in attempts[1]
 

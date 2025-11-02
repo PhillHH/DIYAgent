@@ -19,14 +19,22 @@ async def test_perform_searches_returns_results_in_order(monkeypatch: pytest.Mon
         ]
     )
 
-    async def fake_invoke(item, settings, limiter):  # type: ignore[unused-argument]
-        return f"OK: {item.query}"
+    async def fake_exec(item, settings, limiter):  # type: ignore[unused-argument]
+        if "bauhaus" in item.query:
+            return "products", []
+        return f"OK: {item.query}", []
 
-    monkeypatch.setattr(search_module, "_invoke_search_model", fake_invoke)
+    monkeypatch.setattr(search_module, "_execute_search_item", fake_exec)
 
-    results = await search_module.perform_searches(plan, DEFAULT_SEARCHER)
+    summaries, product_results = await search_module.perform_searches(
+        plan,
+        DEFAULT_SEARCHER,
+        user_query="Allgemeine Frage",
+        category=None,
+    )
 
-    assert results == ["OK: q1", "OK: q2", "OK: q3"]
+    assert summaries == ["OK: q1", "OK: q2", "OK: q3"]
+    assert product_results == []
 
 
 @pytest.mark.asyncio
@@ -34,5 +42,32 @@ async def test_perform_searches_requires_items() -> None:
     empty_plan = WebSearchPlan.model_construct(searches=[])
 
     with pytest.raises(ValueError, match="no searches planned"):
-        await search_module.perform_searches(empty_plan, DEFAULT_SEARCHER)
+        await search_module.perform_searches(
+            empty_plan,
+            DEFAULT_SEARCHER,
+            user_query="Test",
+            category=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_perform_searches_adds_bauhaus_item(monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = WebSearchPlan(
+        searches=[WebSearchItem(reason="r1", query="q1")]
+    )
+
+    async def fake_exec(item, settings, limiter):  # type: ignore[unused-argument]
+        return item.reason, []
+
+    monkeypatch.setattr(search_module, "_execute_search_item", fake_exec)
+
+    summaries, product_results = await search_module.perform_searches(
+        plan,
+        DEFAULT_SEARCHER,
+        user_query="Regal bauen",
+        category="DIY",
+    )
+
+    assert any("Einkaufsliste" in summary for summary in summaries)
+    assert product_results == []
 

@@ -9,6 +9,7 @@
 - `e2e_probe.py` fuehrt eine End-to-End-Probe gegen die laufende FastAPI durch.
 - `dev.ps1` / `dev.sh` starten uvicorn im Projekt-Venv (inkl. `--reload`).
 - Ideal fuer manuelle Funktionstests und CI-Sanity-Checks.
+- Nach erfolgreichem Versand prüft die Probe, ob `status.payload.email_links` mindestens einen Bauhaus-Link enthält.
 
 ## Schnittstellen / Vertraege
 - `e2e_probe.py`: CLI-Parameter `--email` (Pflicht), optional `--query`, `--base-url` (Default `http://localhost:8005`), `--interval`, `--timeout`.
@@ -22,7 +23,7 @@
 # In zweitem Terminal
 python scripts/e2e_probe.py --email user@example.com --base-url http://127.0.0.1:8005
 ```
-- Skript startet Job, pollt `/status/{job_id}` alle 2 s, zeigt Phasen in der Konsole an.
+- Skript startet Job, pollt `/status/{job_id}` alle 2 s, zeigt Phasen in der Konsole an und validiert die Einkaufsliste anhand der Status-Payload.
 
 ## Grenzen & Annahmen
 - `e2e_probe.py` benötigt laufenden Uvicorn-Server (z. B. via `dev.ps1`/`dev.sh`).

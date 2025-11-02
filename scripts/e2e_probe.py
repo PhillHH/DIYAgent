@@ -50,7 +50,7 @@ def poll_status(
     job_id: str,
     interval: float,
     timeout: float,
-) -> Dict[str, Optional[str]]:
+) -> Dict[str, object]:
     """Fragt den Status zyklisch ab, bis ein Endzustand erreicht ist."""
 
     start = time.monotonic()
@@ -96,7 +96,20 @@ def run_probe(
     phase = status.get("phase", "unknown")
     detail = status.get("detail")
     print(f"Finaler Status: {phase}" + (f" ({detail})" if detail else ""))
-
+    if phase == "done":
+        payload = status.get("payload") or {}
+        if isinstance(payload, dict):
+            links = payload.get("email_links") or []
+        else:
+            links = []
+        bauhaus_links = [
+            link
+            for link in links
+            if isinstance(link, str) and "bauhaus" in link.lower()
+        ]
+        if not bauhaus_links:
+            print("Warnung: Keine Bauhaus-Links im finalen HTML gefunden.")
+            return 1
     return 0 if phase == "done" else 1
 
 

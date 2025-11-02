@@ -24,7 +24,8 @@
 
 ## LLM-Output-Guard
 - Bewertet den finalen Markdown hinsichtlich Sicherheits-/Policy-Anforderungen.
-- Erlaubt DIY-Inhalte sowie Meta-Analysen zur KI-Steuerung; verbietet riskante Anleitungen ohne Fachkraft/Warnhinweise, medizinische & finanzielle Beratung, PII.
+- Erlaubt DIY-Inhalte sowie Meta-Analysen zur KI-Steuerung und Händler-Links (z. B. Bauhaus); Tracking-Parameter werden als Issue gemeldet, blockieren den Versand jedoch nicht.
+- Verbietet weiterhin Links auf `mail.google.com`; andere Auffälligkeiten können als Hinweis in den Issues erscheinen.
 - Liefert JSON (`allowed`, `category`, `issues`); Fehler resultieren in `RuntimeError("Output-Guard nicht verfügbar")`.
 
 ## Grenzen & Annahmen

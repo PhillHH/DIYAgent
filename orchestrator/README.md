@@ -12,7 +12,8 @@
 
 ## Schnittstellen / Vertraege
 - `run_job(job_id, query, email, settings_bundle)` koordiniert den vollständigen Ablauf.
-- Statuszugriff via `set_status(job_id, phase, detail)` und `get_status(job_id) -> dict`.
+- Statuszugriff via `set_status(job_id, phase, detail=None, payload=None)` und `get_status(job_id) -> dict`.
+- `payload` enthält Zusatzdaten (z. B. Bauhaus-Links, HTML-Preview) und wird vom Status-Endpoint durchgereicht.
 - Phasenmodell: `queued → planning → searching → writing → email → done` (bzw. `rejected` / `error`).
 
 ## Beispielablauf
@@ -20,9 +21,9 @@
 2. LLM-Input-Guard (`classify_query_llm`) klassifiziert die Anfrage (`DIY`, `KI_CONTROL`, `REJECT`).
    - `REJECT` → Job stoppt sofort mit Phase `rejected` und Guard-Begruendung.
    - `DIY` / `KI_CONTROL` → Phase `planning (Kategorie: …)` wird gesetzt.
-3. Planner erzeugt WebSearchPlan, Search liefert Zusammenfassungen, Writer erstellt den Report (Template-Wechsel bei `KI_CONTROL`).
-4. LLM-Output-Guard (`audit_report_llm`) auditiert den Markdown. Policy-Verstöße → Phase `rejected` mit Issue-Liste.
-5. Erfolgsfall: Emailer versendet den Bericht, Status endet bei `done`.
+3. Planner erzeugt WebSearchPlan, Search liefert Zusammenfassungen und Bauhaus-Produkttreffer, Writer erstellt den Report (Template-Wechsel bei `KI_CONTROL`).
+4. LLM-Output-Guard (`audit_report_llm`) auditiert den Markdown (Händler-Links erlaubt; nur `mail.google.com` wird blockiert). Policy-Verstöße → Phase `rejected` mit Issue-Liste.
+5. Erfolgsfall: Emailer versendet den Bericht, Status endet bei `done` inklusive Payload (`email_links`, `email_preview`).
 
 ## Grenzen & Annahmen
 - Statusstore ist In-Memory → fuer Multi-Prozess-Deployments persistente Alternative vorsehen.

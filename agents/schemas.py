@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from models.types import ProductItem
+
 
 class WebSearchItem(BaseModel):
     """Einzelne Suchaufgabe mit Grund und Query."""

@@ -8,6 +8,7 @@ import pytest
 
 from agents.emailer import send_email
 from agents.schemas import ReportData
+from models.types import ProductItem
 
 
 class DummyResponse:
@@ -28,10 +29,20 @@ async def test_send_email_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("agents.emailer._post_sendgrid", fake_post)
 
-    result = await send_email(report, "user@example.com")
+    products = [
+        ProductItem(
+            title="Bauhaus Test",
+            url="https://www.bauhaus.info/p/test",
+            note="",
+            price_text="ca. 10 €",
+        )
+    ]
+
+    result = await send_email(report, "user@example.com", product_results=products)
 
     assert result["status"] == "sent"
     assert result["status_code"] == 202
+    assert any("bauhaus" in link for link in result.get("links", []))
 
 
 @pytest.mark.asyncio

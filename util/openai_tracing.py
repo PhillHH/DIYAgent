@@ -152,6 +152,9 @@ def _write_trace(
         "error": error_info,
     }
 
+    if call_name in {"search_products", "writer_email"}:
+        entry["highlight"] = True
+
     log_file = _ensure_log_dir() / "openai.log"
     with log_file.open("a", encoding="utf-8") as file:
         file.write(json.dumps(entry, ensure_ascii=False) + "\n")

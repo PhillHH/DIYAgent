@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from agents.schemas import ReportData, WebSearchItem, WebSearchPlan
+from models.types import ProductItem
 from guards.schemas import InputGuardResult, OutputGuardResult
 from orchestrator.pipeline import SettingsBundle, run_job
 from orchestrator.status import get_status, reset_statuses
@@ -23,12 +24,22 @@ async def test_run_job_completes(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     async def fake_search(*args, **kwargs):  # type: ignore[unused-argument]
-        return [
-            "Materialliste zusammenstellen",
-            "Werkzeuge vorbereiten",
-        ]
+        return (
+            [
+                "Materialliste zusammenstellen",
+                "Werkzeuge vorbereiten",
+            ],
+            [
+                ProductItem(
+                    title="Bauhaus Test",
+                    url="https://www.bauhaus.info/test",
+                    note="",
+                    price_text="ca. 10 €",
+                )
+            ],
+        )
 
-    async def fake_writer(query, summaries, settings, category=None):  # type: ignore[unused-argument]
+    async def fake_writer(query, summaries, settings, category=None, product_results=None):  # type: ignore[unused-argument]
         return ReportData(
             short_summary="Kurze Zusammenfassung",
             markdown_report="# Bericht\n\nDIY-Inhalt",

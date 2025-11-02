@@ -17,7 +17,7 @@ def set_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class FakeClient:
-    def __init__(self, status_sequence: list[dict[str, str | None]]) -> None:
+    def __init__(self, status_sequence: list[dict[str, object]]) -> None:
         self._status_sequence = status_sequence
         self._polls = 0
 
@@ -39,8 +39,13 @@ class FakeClient:
 def test_e2e_probe_success(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     fake_client = FakeClient(
         [
-            {"phase": "queued", "detail": None},
-            {"phase": "done", "detail": None},
+            {"phase": "queued", "detail": None, "payload": None, "job_id": "fake-job"},
+            {
+                "phase": "done",
+                "detail": None,
+                "payload": {"email_links": ["https://www.bauhaus.info/test"], "email_preview": "<html>"},
+                "job_id": "fake-job",
+            },
         ]
     )
     monkeypatch.setattr("httpx.Client", lambda timeout=30: fake_client)  # type: ignore[assignment]
@@ -55,7 +60,9 @@ def test_e2e_probe_success(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Captu
 
 
 def test_e2e_probe_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_client = FakeClient([{"phase": "error", "detail": "Simulierter Fehler"}])
+    fake_client = FakeClient([
+        {"phase": "error", "detail": "Simulierter Fehler", "payload": None, "job_id": "fake-job"}
+    ])
     monkeypatch.setattr("httpx.Client", lambda timeout=30: fake_client)  # type: ignore[assignment]
     monkeypatch.setattr(e2e_probe, "time", types.SimpleNamespace(monotonic=lambda: 0.0, sleep=lambda _x: None))
 

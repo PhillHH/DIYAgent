@@ -99,11 +99,28 @@ Status-Store <- FastAPI (/status/{job_id})
 - Datenschutz: Kompletttraces koennen sensible Inhalte enthalten. In Produktion `OPENAI_TRACE_RAW=false` oder Tracing abschalten.
 
 ## Premium-E-Mail-Report
-- Aufbau: Writer generiert 1.800–2.500 Woerter mit Premium-Struktur (Executive Summary, Materialien- & Zeitpläne, Sicherheitskapitel, Premium-Laminat-Vergleich, FAQ).
-- Rendering: Emailer wandelt Markdown in typografisch formatiertes HTML mit Inhaltsverzeichnis, Tabellen-Styles (`class="table"`), Dark-Mode-Optimierung und Hinweisblöcken.
-- Konfiguration: `.env` optional `OPENAI_WEB_TOOL_TYPE` fuer Websuche, `OPENAI_TRACING_ENABLED` fuer Plattform-Traces, `OPENAI_TRACE_RAW` fuer lokale Loginspektion.
+- Aufbau: Writer generiert 1.800–2.500 Woerter mit festem Ablauf (Meta-Zeile, internes Inhaltsverzeichnis, Vorbereitung, Einkaufsliste Bauhaus, Schritt-für-Schritt inkl. Prüfkriterien, Qualität & Sicherheit, Zeit & Kosten, optionale Upgrades/Pflege, FAQ).
+- Rendering: Emailer wandelt Markdown in ein gebrandetes HTML (Gradient-Hintergrund, Header mit Logo, max-width 720 px, Dark-Mode, Callouts, Zebra-Tabellen).
+- Einkaufsliste: Zusätzlich zur Tabelle im Markdown wird eine verifizierte Produktliste aus Bauhaus-Links (info/de/at) eingebettet und programmgesteuert aus product_results erzeugt.
 - Limits & Performance: `MAX_EMAIL_SIZE` 500 KB; lange Inhalte werden nicht gekürzt. Bei grossen Projekten kann das Rendern einige Sekunden dauern.
-- Troubleshooting: 400er von OpenAI → Tool-Type pruefen (`web_search_preview`, `web_search_preview_2025_03_11`), bei SendGrid-401 API-Key und Berechtigungen validieren. Beispiel-Screenshots folgen im geplanten `docs/`-Ordner.
+- Troubleshooting: 400er von OpenAI → Tool-Type pruefen (`web_search_preview`, `web_search_preview_2025_03_11`), bei SendGrid-401 API-Key und Berechtigungen validieren.
+
+## E-Mail-Branding
+- Farbe, Logo und CTA sind zentral in `agents/emailer.py` (`DEFAULT_BRAND`) gepflegt; via `send_email(..., brand={...})` überschreibbar.
+- Header enthält Markenname + Meta-Chips (Niveau, Dauer, Budget). CTA-Link führt standardmäßig auf das Dashboard, kann aber angepasst werden.
+- Callouts verwenden semantische `role="note"`-Attribute für Screenreader.
+
+## Produktlinks (Bauhaus)
+- `agents/search.py` ergänzt automatisch eine Recherche "Einkaufsliste Bauhaus" (Domains `.info`, `.de`, `.at`) und nutzt das Web-Tool mit JSON-Response-Format.
+- Ergebnisse werden dedupliziert, Tracking-Parameter entfernt und an Writer/Emailer weitergegeben; fehlen Produkte, wird ein Hinweis ohne Links ausgegeben.
+- Guards lassen Händler-Links zu; aktuell wird nur `mail.google.com` als harter Verstoß gewertet.
+
+## Interne Anker im ToC
+- Writer erzeugt ausschließlich interne `#kebab-case`-Links im Inhaltsverzeichnis; der Emailer ersetzt vorhandene ToCs durch interne Links, falls nötig.
+
+## Tracing der E-Mail-Erzeugung
+- `util/openai_tracing.py` markiert Calls `search_products` und `writer_email` mit `highlight=true`; bei `OPENAI_TRACE_RAW=true` werden Prompts/Outputs protokolliert.
+- Logs helfen beim Debugging von Produktlisten oder Promptänderungen; Ausgabe liegt in `logs/openai.log`.
 
 ## LLM-Guards
 - Input: `classify_query_llm` klassifiziert Anfragen (`DIY`, `KI_CONTROL`, `REJECT`). REJECT stoppt den Job sofort, KI_CONTROL aktiviert das Governance-Template im Writer.

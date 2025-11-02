@@ -12,6 +12,7 @@ Hilfsfunktionen rund um OpenAI-Integrationen und Tracing.
   - Stellt `traced_completion(call_name, model, payload, executor)` bereit.
   - Loggt Dauer, geschätzte Token-Kosten sowie (optional) Roh-Prompts in `logs/openai.log`.
   - Unterstützt OpenAI Platform Traces via `OPENAI_TRACING_ENABLED` / `OPENAI_TRACE_RAW` (siehe [`config/README.md`](../config/README.md)).
+  - Calls `search_products` und `writer_email` werden mit `highlight=true` markiert, um Bauhaus-Recherche und Writer-HTML schnell wiederzufinden.
 
 - **`openai_response.py`**
   - Enthält `extract_output_text` zum robusten Extrahieren von Text aus OpenAI-Responses (inkl. Tool-Calls, JSON-Objekten, Chat-Bodies).

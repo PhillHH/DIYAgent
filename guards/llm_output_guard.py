@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
 from pydantic import ValidationError
@@ -48,14 +50,19 @@ async def audit_report_llm(
     if not LLM_GUARDS_ENABLED:
         raise RuntimeError("Output-Guard nicht verfügbar")
 
+    blocking_issues, warning_issues = _collect_static_checks(report_md)
+    if blocking_issues:
+        return OutputGuardResult(allowed=False, category="UNKNOWN", issues=blocking_issues)
+
     guard_settings = _build_settings(settings)
     messages = [
         {
             "role": "system",
             "content": (
-                "Pruefe den Markdown-Report auf Richtlinien. Erlaubt: DIY-Inhalte oder Meta-Bewertungen zu KI-Steuerung. "
-                "Verboten: unsichere Anleitungen (Elektrik/Gas ohne Fachkraft und Warnhinweise), medizinische/finanzielle Beratung, personenbezogene Daten. "
-                "Antworte nur als JSON mit 'allowed', 'category' (DIY, KI_CONTROL, UNKNOWN) und 'issues'."
+                "Pruefe den Markdown-Report auf Richtlinien. Erlaubt: DIY-Inhalte oder Meta-Bewertungen zu KI-Steuerung sowie Haendler-Links zu vertrauenswuerdigen Shops (z. B. Bauhaus, OBI, Hornbach). "
+                "Verboten: Links auf mail.google.com, unsichere Anleitungen ohne Schutz-/Lueftungshinweise, medizinische oder finanzielle Beratung, personenbezogene Daten. "
+                "Tracking-Parameter oder externe Links im Inhaltsverzeichnis duerfen gemeldet, aber nicht blockiert werden. "
+                "Antworte nur als JSON mit 'allowed', 'category' (DIY, KI_CONTROL, UNKNOWN) und 'issues' (konkrete Verstoesse)."
             ),
         },
         {"role": "user", "content": json.dumps({"query": query, "report": report_md})},
@@ -104,6 +111,46 @@ async def audit_report_llm(
             if not content.strip():
                 raise ValueError("Leere Guard-Antwort")
             data = json.loads(content)
-        return OutputGuardResult.model_validate(data)
+        result = OutputGuardResult.model_validate(data)
+        if warning_issues:
+            existing = {issue for issue in result.issues}
+            for issue in warning_issues:
+                if issue not in existing:
+                    result.issues.append(issue)
+                    existing.add(issue)
+        return result
     except (ValidationError, Exception) as exc:
         raise RuntimeError("Output-Guard nicht verfügbar") from exc
+
+
+def _collect_static_checks(report_md: str) -> tuple[list[str], list[str]]:
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    lower_report = report_md.lower()
+    if "mail.google.com" in lower_report:
+        blockers.append("Verbotener Link auf mail.google.com entdeckt.")
+
+    toc_match = re.search(
+        r"##\s+inhaltsverzeichnis[\s\S]*?(?=\n##\s+|\Z)",
+        report_md,
+        re.IGNORECASE,
+    )
+    if toc_match:
+        toc_block = toc_match.group(0)
+        external = re.findall(r"\[[^\]]+\]\((?!#)[^)]+\)", toc_block)
+        for entry in external:
+            warnings.append(f"Inhaltsverzeichnis enthaelt externen Link: {entry}")
+
+    link_pattern = re.compile(r"\[[^\]]+\]\((http[^)]+)\)")
+    for match in link_pattern.finditer(report_md):
+        url = match.group(1)
+        parsed = urlparse(url)
+        query = (parsed.query or "").lower()
+        if any(
+            token in query
+            for token in ("utm_", "fbclid", "gclid", "ref", "mc_")
+        ):
+            warnings.append(f"Tracking-Parameter erkannt (wird entfernt): {url}")
+
+    return blockers, warnings

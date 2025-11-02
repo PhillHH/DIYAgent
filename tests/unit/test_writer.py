@@ -19,27 +19,51 @@ async def test_writer_premium_length(monkeypatch: pytest.MonkeyPatch) -> None:
         "Durchfuehrung: In Bahnen streichen, etwaige Tropfen sofort entfernen und trocknen lassen.",
     ]
 
-    premium_sections = [
-        "# Premium Projekt",
-        "## Executive Summary",
-        "## Projektueberblick und Voraussetzungen",
-        "## Material & Werkzeuge",
-        "| Position | Spezifikation | Menge | Stückpreis | Summe |",
-        "## Schritt-fuer-Schritt-Anleitung",
-        "## Zeit- & Kostenplan",
-        "## Qualitätssicherung & typische Fehler",
-        "## Sicherheit",
-        "## Premium-Laminat",
-        "## Pflege & Wartung",
-        "## FAQ",
-    ]
-    long_text = "\n\n".join(premium_sections + ["Abschnitt " + str(i) + " lorem ipsum" for i in range(400)])
+    report_markdown = "\n".join(
+        [
+            "# Premium Projekt",
+            "> **Meta:** Niveau Anfänger · Zeit 14–18 h · Budget 250–450 €",
+            "",
+            "## Inhaltsverzeichnis",
+            "- [Vorbereitung](#vorbereitung)",
+            "- [Einkaufsliste Bauhaus](#einkaufsliste-bauhaus)",
+            "- [Schritt-für-Schritt](#schritt-fuer-schritt)",
+            "- [Qualität & Sicherheit](#qualitaet-sicherheit)",
+            "- [Zeit & Kosten](#zeit-kosten)",
+            "- [FAQ](#faq)",
+            "",
+            "## Vorbereitung",
+            "- Raum vorbereiten",
+            "",
+            "## Einkaufsliste Bauhaus",
+            "| Position | Beschreibung | Menge | Preis | Link |",
+            "| --- | --- | --- | --- | --- |",
+            "| 1 | MDF Platte | 3 | ca. 45 € | https://www.bauhaus.info/p |",
+            "",
+            "## Schritt-für-Schritt",
+            "1. Schritt eins\n**Prüfkriterium:** Oberfläche glatt",
+            "2. Schritt zwei\n**Prüfkriterium:** Farbe deckend",
+            "",
+            "## Qualität & Sicherheit",
+            "- PSA tragen",
+            "",
+            "## Zeit & Kosten",
+            "| Paket | Dauer | Kosten |",
+            "| --- | --- | --- |",
+            "| Vorbereitung | 4 h | ca. 60 € |",
+            "",
+            "## FAQ",
+            "### Wie lange trocknet die Farbe?",
+            "Ungefaehr 12 Stunden.",
+        ]
+        + ["Abschnitt " + str(i) + " lorem ipsum" for i in range(200)]
+    )
 
     async def fake_invoke(messages, settings):  # type: ignore[unused-argument]
         return json.dumps(
             {
                 "short_summary": "Sehr lange Zusammenfassung.",
-                "markdown_report": long_text,
+                "markdown_report": report_markdown,
                 "followup_questions": [
                     "Welche Farbe ist gewuenscht?",
                     "Wie gross ist der Raum?",
@@ -53,9 +77,10 @@ async def test_writer_premium_length(monkeypatch: pytest.MonkeyPatch) -> None:
 
     report = await write_report(query, search_results, DEFAULT_WRITER)
 
-    assert len(report.markdown_report) > 8000
-    assert "| Position | Spezifikation" in report.markdown_report
-    assert "## Premium-Laminat" in report.markdown_report
+    assert "## Premium-Laminat" not in report.markdown_report
+    assert "## Einkaufsliste (Bauhaus-Links)" in report.markdown_report
+    assert "**Prüfkriterium:**" in report.markdown_report
+    assert "(#" in report.markdown_report
     assert 4 <= len(report.followup_questions) <= 6
 
 
@@ -76,5 +101,6 @@ async def test_writer_rejects_non_diy(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("agents.writer._invoke_writer_model", fake_invoke)
 
     report = await write_report(query, search_results, DEFAULT_WRITER)
-    assert report.markdown_report == "# Aktien"
+    assert report.markdown_report.startswith("# Aktien")
+    assert "Keine geprüften Bauhaus-Produkte verfügbar" in report.markdown_report
 

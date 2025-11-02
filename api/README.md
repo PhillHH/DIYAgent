@@ -10,7 +10,8 @@
 
 ## Schnittstellen / Vertraege
 - `POST /start_research` – Body: `{ "query": str, "email": str }` → Antwort `{ "job_id": str }`.
-- `GET /status/{job_id}` – Antwort `{ "job_id": str, "phase": str, "detail": Optional[str] }`.
+- `GET /status/{job_id}` – Antwort `{ "job_id": str, "phase": str, "detail": Optional[str], "payload": Optional[dict] }`.
+- `payload` enthält z. B. `{ "email_links": [...], "email_preview": "...", "product_results": [...] }`, sobald der Versand erfolgreich war.
 - Phasen: `queued → planning → searching → writing → email → done`. Fehlerpfade führen zu `rejected` (Guard) oder `error` (Systemfehler).
 
 ## Beispielablauf
@@ -23,7 +24,16 @@ POST /start_research
 -> {"job_id": "uuid"}
 
 GET /status/uuid
--> {"job_id": "uuid", "phase": "writing", "detail": null}
+-> {
+     "job_id": "uuid",
+     "phase": "done",
+     "detail": null,
+     "payload": {
+       "email_links": ["https://www.bauhaus.info/..."],
+       "email_preview": "<html>...",
+       "product_results": [{"title": "...", "url": "https://www.bauhaus.info/..."}]
+     }
+   }
 ```
 
 ## CORS & Lokaler Betrieb
@@ -34,7 +44,7 @@ GET /status/uuid
 ## Grenzen & Annahmen
 - Kein Authentifizierungsmechanismus – vor produktivem Einsatz ergänzen.
 - Status ist eventually consistent; Pollingintervall gemäß Skript (`scripts/e2e_probe.py`).
-- Fehlerdetails sind im `detail`-Feld in Klartext enthalten.
+- Fehlerdetails sind im `detail`-Feld in Klartext enthalten; Zusatzdaten (z. B. Einkaufsliste) erscheinen in `payload`.
 
 ## Wartungshinweise
 - Bei neuen Phasen oder Fehlertypen Beispiele in Dokumentation aktualisieren.

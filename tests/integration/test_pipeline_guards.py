@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from agents.schemas import ReportData, WebSearchItem, WebSearchPlan
+from models.types import ProductItem
 from guards.schemas import InputGuardResult, OutputGuardResult
 from orchestrator.pipeline import SettingsBundle, run_job
 from orchestrator.status import get_status, reset_statuses
@@ -43,9 +44,19 @@ async def test_pipeline_runs_through_for_diy(monkeypatch: pytest.MonkeyPatch) ->
         )
 
     async def fake_search(*args, **kwargs):  # type: ignore[unused-argument]
-        return ["Materialliste", "Werkzeugliste"]
+        return (
+            ["Materialliste", "Werkzeugliste"],
+            [
+                ProductItem(
+                    title="Test",
+                    url="https://www.bauhaus.info/test",
+                    note=None,
+                    price_text="ca. 5 €",
+                )
+            ],
+        )
 
-    async def fake_writer(query, summaries, settings, category=None):  # type: ignore[unused-argument]
+    async def fake_writer(query, summaries, settings, category=None, product_results=None):  # type: ignore[unused-argument]
         return ReportData(
             short_summary="Kurz",
             markdown_report="# Report\n\nDIY",
@@ -85,9 +96,12 @@ async def test_pipeline_runs_through_for_ki_control(monkeypatch: pytest.MonkeyPa
         )
 
     async def fake_search(*args, **kwargs):  # type: ignore[unused-argument]
-        return ["Analyse", "Governance"]
+        return (
+            ["Analyse", "Governance"],
+            [],
+        )
 
-    async def fake_writer(query, summaries, settings, category=None):  # type: ignore[unused-argument]
+    async def fake_writer(query, summaries, settings, category=None, product_results=None):  # type: ignore[unused-argument]
         return ReportData(
             short_summary="Kurz",
             markdown_report="# KI Governance Report\n\n## Ziel & Kontext",
