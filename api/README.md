@@ -6,7 +6,7 @@
 - [Orchestrator](../orchestrator/README.md) – Phasen & Statusdetails
 
 ## Zweck
-- Bietet eine schlanke FastAPI-Schnittstelle, um DIY-/KI-Control-Recherchen zu starten und den Fortschritt abzufragen.
+- Bietet eine schlanke FastAPI-Schnittstelle von Home Task AI, um Heimwerker- und KI-Control-Recherchen zu starten und den Fortschritt abzufragen.
 
 ## Schnittstellen / Vertraege
 - `POST /start_research` – Body: `{ "query": str, "email": str }` → Antwort `{ "job_id": str }`.

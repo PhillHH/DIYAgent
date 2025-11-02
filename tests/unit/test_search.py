@@ -56,7 +56,10 @@ async def test_perform_searches_adds_bauhaus_item(monkeypatch: pytest.MonkeyPatc
         searches=[WebSearchItem(reason="r1", query="q1")]
     )
 
+    seen_queries: list[str] = []
+
     async def fake_exec(item, settings, limiter):  # type: ignore[unused-argument]
+        seen_queries.append(item.query)
         return item.reason, []
 
     monkeypatch.setattr(search_module, "_execute_search_item", fake_exec)
@@ -68,6 +71,6 @@ async def test_perform_searches_adds_bauhaus_item(monkeypatch: pytest.MonkeyPatc
         category="DIY",
     )
 
-    assert any("Einkaufsliste" in summary for summary in summaries)
+    assert seen_queries == ["q1"]  # Produkt-Slots werden separat behandelt
     assert product_results == []
 

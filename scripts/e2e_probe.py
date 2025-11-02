@@ -116,7 +116,7 @@ def run_probe(
 def build_arg_parser() -> argparse.ArgumentParser:
     """Erzeugt den CLI-Argumentparser."""
 
-    parser = argparse.ArgumentParser(description="End-to-End-Probe fuer die DIY-Pipeline")
+    parser = argparse.ArgumentParser(description="End-to-End-Probe fuer die Home-Task-AI-Pipeline")
     parser.add_argument("--base-url", default="http://127.0.0.1:8005", help="Basis-URL der API")
     parser.add_argument(
         "--query",

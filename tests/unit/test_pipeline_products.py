@@ -26,7 +26,11 @@ async def test_pipeline_propagates_product_results(monkeypatch: pytest.MonkeyPat
         return WebSearchPlan(searches=[WebSearchItem(reason="Allgemein", query="Test")])
 
     async def fake_search(plan, settings, *, user_query, category):  # type: ignore[unused-argument]
-        return ["Zusammenfassung"], [product]
+        return ["Zusammenfassung"], []
+
+    async def fake_product_enrichment(user_query, search_results, settings):  # type: ignore[unused-argument]
+        assert search_results == ["Zusammenfassung"]
+        return [product]
 
     async def fake_writer(query, summaries, settings, category=None, product_results=None):  # type: ignore[unused-argument]
         assert product_results == [product]
@@ -49,6 +53,7 @@ async def test_pipeline_propagates_product_results(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("orchestrator.pipeline.classify_query_llm", fake_input_guard)
     monkeypatch.setattr("orchestrator.pipeline.plan_searches", fake_plan)
     monkeypatch.setattr("orchestrator.pipeline.perform_searches", fake_search)
+    monkeypatch.setattr("orchestrator.pipeline.perform_product_enrichment", fake_product_enrichment)
     monkeypatch.setattr("orchestrator.pipeline.write_report", fake_writer)
     monkeypatch.setattr("orchestrator.pipeline.audit_report_llm", fake_output_guard)
     monkeypatch.setattr("orchestrator.pipeline.send_email", fake_email)

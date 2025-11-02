@@ -1,4 +1,4 @@
-"""HTTP-Einstiegspunkt fuer orchestrierten DIY-Research."""
+"""HTTP-Einstiegspunkt fuer Home Task AI."""
 
 from __future__ import annotations
 
@@ -6,13 +6,14 @@ import asyncio
 from uuid import uuid4
 
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from orchestrator.pipeline import SettingsBundle, run_job
 from orchestrator.status import get_status, set_status
 
-app = FastAPI(title="Deep Research Agent API")
+app = FastAPI(title="Home Task AI API")
 _SETTINGS_BUNDLE = SettingsBundle()
 
 app.add_middleware(
@@ -44,9 +45,9 @@ async def start_research(payload: StartRequest) -> dict[str, str]:
 
 
 @app.get("/status/{job_id}")
-async def get_job_status(job_id: str) -> dict[str, str | None]:
+async def get_job_status(job_id: str) -> dict[str, object]:
     """Liefert den aktuellen Status fuer einen Job."""
 
-    return get_status(job_id)
+    return jsonable_encoder(get_status(job_id))
 
 

@@ -1,7 +1,7 @@
-"""Async Writer-Agent erzeugt strukturierte DIY-Berichte.
+"""Async Writer-Agent erzeugt strukturierte Projektberichte für Home Task AI.
 
 Das Modul setzt auf OpenAI, um aus Query und Recherchezusammenfassungen einen
-Markdown-Report samt Kurzuebersicht und Rueckfragen zu erstellen. DIY-spezifische
+Markdown-Report samt Kurzuebersicht und Rueckfragen zu erstellen. Heimwerker-spezifische
 Guardrails verhindern fachfremde Inhalte."""
 
 from __future__ import annotations
@@ -71,7 +71,15 @@ async def write_report(
         raise ValueError("Keine Recherche-Ergebnisse verfuegbar")
 
     try:
-        product_dicts = [item.model_dump() for item in (product_results or [])]
+        product_dicts = [
+            {
+                "title": item.title,
+                "url": str(item.url),
+                "note": item.note,
+                "price_text": item.price_text,
+            }
+            for item in (product_results or [])
+        ]
         payload = json.dumps(
             {
                 "query": query,
@@ -88,9 +96,13 @@ async def write_report(
             cleaned_raw = cleaned_raw[: MAX_REPORT_LENGTH - len("[Gekuerzt]")] + "[Gekuerzt]"
 
         report = ReportData.model_validate_json(cleaned_raw)
+        normalized_products = [
+            ProductItem.model_validate(product)
+            for product in product_dicts
+        ]
         report.markdown_report = _inject_product_section(
             report.markdown_report,
-            list(product_results or []),
+            normalized_products,
         )
         return report
     except Exception as exc:  # pragma: no cover - Fehlerpfad fuer Diagnose
@@ -237,6 +249,7 @@ def _compose_messages(
 
 
 def _inject_product_section(markdown: str, products: List[ProductItem]) -> str:
+    _LOGGER.info("WRITER inject: %d product links", len(products))
     section_header = "## Einkaufsliste (Bauhaus-Links)"
 
     lines: List[str] = []

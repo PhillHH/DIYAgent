@@ -74,25 +74,25 @@ async def perform_searches(
     if not plan.searches:
         raise ValueError("no searches planned")
 
-    if (category or "").upper() == "DIY":
-        bauhaus_reason = "Einkaufsliste Bauhaus"
-        bauhaus_query = (
-            f"{user_query} benötigte Produkte und Zubehör site:bauhaus.info OR site:bauhaus.at OR site:bauhaus.de"
-        )
-        exists = any(
-            item.reason == bauhaus_reason and "site:bauhaus" in item.query.lower()
-            for item in plan.searches
-        )
-        if not exists:
-            plan.searches.append(
-                WebSearchItem(reason=bauhaus_reason, query=bauhaus_query)
-            )
-
     limiter = AsyncLimiter(max(1, MAX_CONCURRENCY), time_period=1)
+
+    standard_items: List[WebSearchItem] = []
+    product_items: List[WebSearchItem] = []
+    for item in plan.searches:
+        if _is_product_search(item):
+            product_items.append(item)
+        else:
+            standard_items.append(item)
+
+    if product_items:
+        _LOGGER.info(
+            "Produkt-Slots (%d) werden in separater Anreicherung abgearbeitet.",
+            len(product_items),
+        )
 
     tasks = [
         asyncio.create_task(_execute_search_item(item, settings, limiter))
-        for item in plan.searches
+        for item in standard_items
     ]
 
     combined = await asyncio.gather(*tasks)
@@ -106,6 +106,41 @@ async def perform_searches(
             product_results.extend(products)
 
     return summaries, product_results
+
+
+async def perform_product_enrichment(
+    user_query: str,
+    search_results: Sequence[str],
+    settings: ModelSettings,
+) -> List[ProductItem]:
+    """Führt eine nachgelagerte Bauhaus-Produktsuche basierend auf bestehenden Ergebnissen aus."""
+
+    if not user_query.strip():
+        raise ValueError("user_query required for product enrichment")
+
+    limiter = AsyncLimiter(max(1, MAX_CONCURRENCY), time_period=1)
+    bauhaus_query = (
+        f"{user_query} benötigte Produkte und Zubehör site:bauhaus.info OR site:bauhaus.de OR site:bauhaus.at"
+    )
+    context = "\n\n".join(result.strip() for result in search_results if result.strip())
+    context = context[:2000] if context else None
+
+    item = WebSearchItem(reason="Einkaufsliste Bauhaus", query=bauhaus_query)
+    summary, products = await _invoke_product_search(
+        item,
+        settings,
+        limiter,
+        context=context,
+    )
+    if products:
+        _LOGGER.info(
+            "Produktanreicherung erfolgreich: %d Treffer (%s)",
+            len(products),
+            [product.url for product in products[:2]],
+        )
+    else:
+        _LOGGER.warning("Produktanreicherung lieferte keine Treffer: %s", summary)
+    return products
 
 
 async def _execute_search_item(
@@ -160,8 +195,6 @@ async def _invoke_standard_search(
                         metadata = dict(call_kwargs.get("metadata") or {})
                         metadata.update({"agent": "search", "query": item.query, "tool_type": tool_type})
                         call_kwargs["metadata"] = {k: str(v) for k, v in metadata.items()}
-                        if OPENAI_TRACING_ENABLED:
-                            call_kwargs["trace_id"] = str(uuid4())
 
                         _validate_payload(call_kwargs)
                         trace_input = {
@@ -176,7 +209,7 @@ async def _invoke_standard_search(
                             tool_type,
                             "auto" if include_tool_choice else "entfernt",
                             json.dumps(
-                                {k: v for k, v in call_kwargs.items() if k not in {"metadata", "trace_id"}},
+                                {k: v for k, v in call_kwargs.items() if k != "metadata"},
                                 ensure_ascii=False,
                             ),
                         )
@@ -207,56 +240,42 @@ async def _invoke_standard_search(
 
 
 async def _invoke_product_search(
-    item: WebSearchItem, settings: ModelSettings, limiter: AsyncLimiter
+    item: WebSearchItem,
+    settings: ModelSettings,
+    limiter: AsyncLimiter,
+    *,
+    context: str | None = None,
 ) -> Tuple[str, List[ProductItem]]:
     client = _get_client()
     messages = [
         {
             "role": "system",
             "content": (
-                "Du bist ein Rechercheur und erstellst eine Einkaufsliste für Bauhaus-Produkte. Du MUSST das Web-Tool verwenden und ausschließlich Produkte von bauhaus.info, bauhaus.at oder bauhaus.de extrahieren. "
-                'Antwortformat: {"items": [{"title": "string", "url": "string", "note": "string|null", "price_text": "string|null"}]}'
+                "Du bist ein Rechercheur und erstellst eine Einkaufsliste ausschließlich mit Produkten aus dem Bauhaus-Onlineshop. "
+                "Verwende das Web-Tool genau einmal mit einer site-beschränkten Suche (site:bauhaus.info OR site:bauhaus.de OR site:bauhaus.at). "
+                "Ignoriere und verwerfe Treffer anderer Domains oder generischer Suchmaschinen-Seiten. "
+                "Extrahiere nur finale Produktseiten, entferne Affiliate-/Tracking-Parameter und antworte als JSON: "
+                '{"items": [{"title": "string", "url": "string", "note": "string|null", "price_text": "string|null"}]}.'
             ),
         },
         {
             "role": "user",
             "content": (
                 f"Suche nach Produkten und Zubehör für: {item.query}. "
-                "Gib mindestens drei relevante Produkte an, falls verfügbar, und entferne Affiliate-/Tracking-Parameter."
+                "Liefere ausschließlich Bauhaus-Produkte (info/de/at), mindestens drei Stück, sofern verfügbar."
+                + (
+                    "\nKontext aus vorherigen Recherchen:\n" + context.strip()
+                    if context
+                    else ""
+                )
             ),
         },
     ]
 
     base_kwargs = settings.to_openai_kwargs()
     base_kwargs.update({"input": messages})
-    base_kwargs["tools"] = [{"type": "web"}]
-    base_kwargs["response_format"] = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "BauhausProducts",
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "title": {"type": "string"},
-                                "url": {"type": "string"},
-                                "note": {"type": "string"},
-                                "price_text": {"type": "string"},
-                            },
-                            "required": ["title", "url"],
-                            "additionalProperties": False,
-                        },
-                    }
-                },
-                "required": ["items"],
-                "additionalProperties": False,
-            },
-        },
-    }
+    tool_type = OPENAI_WEB_TOOL_TYPE or "web_search_preview"
+    base_kwargs["tools"] = [{"type": tool_type}]
 
     async for attempt in AsyncRetrying(
         stop=stop_after_attempt(3),
@@ -265,91 +284,80 @@ async def _invoke_product_search(
     ):
         with attempt:
             async with limiter:
-                for tool_type in _collect_tool_types():
-                    include_tool_choice = True
-                    call_kwargs_base = dict(base_kwargs)
-                    call_kwargs_base["tools"] = [{"type": tool_type}]
-                    metadata = dict(call_kwargs_base.get("metadata") or {})
-                    metadata.update(
-                        {
-                            "agent": "search_products",
-                            "query": item.query,
-                            "tool_type": tool_type,
-                        }
-                    )
-                    call_kwargs_base["metadata"] = {k: str(v) for k, v in metadata.items()}
-                    if OPENAI_TRACING_ENABLED:
-                        call_kwargs_base["trace_id"] = str(uuid4())
+                include_tool_choice = True
+                base_metadata = {"agent": "search_products", "query": item.query, "tool_type": tool_type}
 
-                    for _ in range(2):
-                        call_kwargs = dict(call_kwargs_base)
-                        if include_tool_choice:
-                            call_kwargs["tool_choice"] = "auto"
-                        else:
-                            call_kwargs.pop("tool_choice", None)
+                for _ in range(2):
+                    call_kwargs = dict(base_kwargs)
+                    call_kwargs["tools"] = [{"type": tool_type}]
+                    metadata = dict(call_kwargs.get("metadata") or {})
+                    metadata.update(base_metadata)
+                    call_kwargs["metadata"] = {k: str(v) for k, v in metadata.items()}
+                    if include_tool_choice:
+                        call_kwargs["tool_choice"] = "auto"
+                    else:
+                        call_kwargs.pop("tool_choice", None)
 
-                        _validate_payload(call_kwargs)
-                        trace_payload = {
-                            "messages": messages,
-                            "tools": [{"type": tool_type}],
-                            "query": item.query,
-                        }
+                    _validate_payload(call_kwargs)
+                    trace_payload = {
+                        "messages": messages,
+                        "tools": [{"type": tool_type}],
+                        "query": item.query,
+                    }
 
-                        parse_attempts = 0
-                        while parse_attempts < 2:
-                            parse_attempts += 1
-                            try:
-                                response = await asyncio.wait_for(
-                                    traced_completion(
-                                        "search_products",
-                                        settings.model,
-                                        trace_payload,
-                                        lambda: client.responses.create(**call_kwargs),
-                                    ),
-                                    timeout=DEFAULT_TIMEOUT,
-                                )
-                            except asyncio.TimeoutError as error:
-                                raise RuntimeError(
-                                    f"Timeout fuer Produkt-Suchanfrage '{item.query}'"
-                                ) from error
-                            except Exception as exc:
-                                if include_tool_choice and _is_tool_choice_error(exc):
-                                    include_tool_choice = False
-                                    break
-                                if _is_tool_type_error(exc, tool_type):
-                                    _LOGGER.warning(
-                                        "Tool-Typ %s wird nicht akzeptiert (Produkte), versuche Fallback.",
-                                        tool_type,
-                                    )
-                                    break
-                                _LOGGER.warning("Produkt-Suche fehlgeschlagen: %s", exc)
-                                return "Einkaufsliste Bauhaus: Fehler bei der Produktsuche.", []
-
-                            raw_text = extract_output_text(response).strip()
-                            try:
-                                products = _parse_product_response(raw_text)
-                                summary = (
-                                    f"Einkaufsliste Bauhaus: {len(products)} Produkte extrahiert."
-                                    if products
-                                    else "Einkaufsliste Bauhaus: keine Produkte gefunden."
-                                )
-                                return summary, products
-                            except ValueError as parse_error:
-                                if parse_attempts < 2:
-                                    _LOGGER.warning(
-                                        "Produkt-Antwort ungueltig (%s) – erneuter Versuch.",
-                                        parse_error,
-                                    )
-                                    continue
+                    parse_attempts = 0
+                    while parse_attempts < 2:
+                        parse_attempts += 1
+                        try:
+                            response = await asyncio.wait_for(
+                                traced_completion(
+                                    "search_products",
+                                    settings.model,
+                                    trace_payload,
+                                    lambda: client.responses.create(**call_kwargs),
+                                ),
+                                timeout=DEFAULT_TIMEOUT,
+                            )
+                        except asyncio.TimeoutError as error:
+                            _LOGGER.warning("Produkt-Suche Timeout fuer '%s'", item.query)
+                            raise RuntimeError(
+                                f"Timeout fuer Produkt-Suchanfrage '{item.query}'"
+                            ) from error
+                        except Exception as exc:
+                            if include_tool_choice and _is_tool_choice_error(exc):
+                                _LOGGER.warning("Produkt-Suche: tool_choice nicht akzeptiert – neuer Versuch ohne Vorgabe")
+                                include_tool_choice = False
+                                break
+                            if _is_tool_type_error(exc, tool_type):
                                 _LOGGER.warning(
-                                    "Produkt-JSON nach Wiederholungsversuch ungueltig: %s",
-                                    raw_text[:160],
+                                    "Produkt-Suche: Tool-Typ %s wird nicht akzeptiert (Produkte)",
+                                    tool_type,
                                 )
-                                return "Einkaufsliste Bauhaus: keine Produkte gefunden.", []
+                                raise
+                            _LOGGER.warning("Produkt-Suche fehlgeschlagen: %s", exc)
+                            return "Einkaufsliste Bauhaus: Fehler bei der Produktsuche.", []
 
-                        if not include_tool_choice:
-                            continue
-                        break
+                        raw_text = extract_output_text(response).strip()
+                        try:
+                            products = _parse_product_response(raw_text)
+                            summary = (
+                                f"Einkaufsliste Bauhaus: {len(products)} Produkte extrahiert."
+                                if products
+                                else "Einkaufsliste Bauhaus: keine Produkte gefunden."
+                            )
+                            return summary, products
+                        except ValueError as parse_error:
+                            if parse_attempts < 2:
+                                _LOGGER.warning(
+                                    "Produkt-Antwort ungueltig (%s) – erneuter Versuch.",
+                                    parse_error,
+                                )
+                                continue
+                            _LOGGER.warning(
+                                "Produkt-Antwort nach Wiederholungsversuch ungueltig: %s",
+                                raw_text[:160],
+                            )
+                            return "Einkaufsliste Bauhaus: keine Produkte gefunden.", []
 
                     if include_tool_choice:
                         break
@@ -397,6 +405,7 @@ def _is_product_search(item: WebSearchItem) -> bool:
 
 def _parse_product_response(text: str) -> List[ProductItem]:
     if not text or not text.strip():
+        _LOGGER.warning("Produkt-Suche lieferte leere Antwort.")
         raise ValueError("leere Produktantwort")
 
     try:
@@ -405,7 +414,12 @@ def _parse_product_response(text: str) -> List[ProductItem]:
         try:
             data = json.loads(_extract_json_block(text))
         except json.JSONDecodeError as exc:
-            raise ValueError("Produkt-JSON konnte nicht gelesen werden") from exc
+            data = None
+            markdown_parse_error = exc
+        else:
+            markdown_parse_error = None
+    else:
+        markdown_parse_error = None
 
     if isinstance(data, dict):
         items: Sequence[dict] = data.get("items") or data.get("products") or []
@@ -421,10 +435,12 @@ def _parse_product_response(text: str) -> List[ProductItem]:
         title = (raw.get("title") or raw.get("name") or "").strip()
         url_raw = (raw.get("url") or raw.get("link") or "").strip()
         if not title or not url_raw:
+            _LOGGER.info("Produkt verworfen (fehlende Felder): %s", raw)
             continue
         try:
             sanitized_url = clean_product_url(url_raw)
-        except ValueError:
+        except ValueError as exc:
+            _LOGGER.info("Produkt verworfen (URL): %s (%s)", url_raw, exc)
             continue
 
         note = (raw.get("note") or raw.get("description") or "").strip() or None
@@ -447,11 +463,55 @@ def _parse_product_response(text: str) -> List[ProductItem]:
                 }
             )
         except ValidationError as exc:
-            _LOGGER.debug("Produkt verworfen (Validierungsfehler): %s", exc)
+            _LOGGER.info("Produkt verworfen (Validierung): %s", exc)
             continue
         products.append(product)
 
-    return products
+    if products:
+        _LOGGER.info("Produkt-Suche erfolgreich: %d Treffer", len(products))
+        return products
+
+    # Markdown-Fallback: extrahiere Links im Format [Titel](URL) – Hinweis
+    markdown_matches = re.findall(
+        r"\[([^\]]+?)\]\((https?://[^)]+bauhaus\.(?:info|de|at)[^)]*)\)(?:\s*[–\-]\s*([^\n]+))?",
+        text,
+        re.IGNORECASE,
+    )
+    if markdown_matches:
+        fallback_products: List[ProductItem] = []
+        for title, url_raw, note_raw in markdown_matches:
+            title = title.strip()
+            try:
+                sanitized_url = clean_product_url(url_raw.strip())
+            except ValueError as exc:
+                _LOGGER.info("Produkt (Markdown) verworfen (URL): %s (%s)", url_raw, exc)
+                continue
+            note = note_raw.strip() if note_raw else None
+            try:
+                product = ProductItem.model_validate(
+                    {
+                        "title": title,
+                        "url": sanitized_url,
+                        "note": note,
+                        "price_text": None,
+                    }
+                )
+            except ValidationError as exc:
+                _LOGGER.info("Produkt (Markdown) verworfen (Validierung): %s", exc)
+                continue
+            fallback_products.append(product)
+
+        if fallback_products:
+            _LOGGER.info(
+                "Produkt-Suche (Markdown-Fallback) erfolgreich: %d Treffer",
+                len(fallback_products),
+            )
+            return fallback_products
+
+    if markdown_parse_error:
+        raise ValueError("Produkt-JSON konnte nicht gelesen werden") from markdown_parse_error
+
+    return []
 
 
 def _extract_json_block(text: str) -> str:

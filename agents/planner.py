@@ -1,8 +1,11 @@
-"""KI-gestuetzter Planner fuer DIY-Recherchen.
+"""KI-gestützter Planner für Home-Task-AI-Projekte.
 
-Das Modul orchestriert den Aufruf des OpenAI-Modells, um aus einer Anwenderfrage
-strukturierte Web-Suchaufgaben abzuleiten. Dabei werden DIY-Guardrails strikt
-eingehalten und jede Antwort in das `WebSearchPlan`-Schema eingepasst."""
+Dieses Modul übersetzt eine Nutzerfrage in strukturierte Web-Recherchen. Dabei
+arbeiten wir ausschließlich in DIY-konformen Grenzen und brauchen deshalb eine
+enge Kontrolle über Prompt, Validierung und Fallbacks. Die Klasse `_invoke_planner_model`
+ist der zentrale Berührungspunkt zum OpenAI-Backend; `plan_searches` kümmert sich
+um Wiederholversuche, strikte JSON-Validierung sowie ein Heuristik-Fallback, damit
+der Gesamtfluss nicht blockiert, falls das Modell doch einmal ausfällt."""
 
 from __future__ import annotations
 
@@ -24,6 +27,10 @@ _CLIENT: Optional[AsyncOpenAI] = None
 
 def _get_client() -> AsyncOpenAI:
     """Erzeugt bei Bedarf einen wiederverwendbaren OpenAI-Client.
+
+    Hintergrund: Wir verwenden einen globalen Client, damit TCP-Verbindungen
+    und TLS-Handshakes wiederverwendet werden. Das ist performanter und verhindert
+    Rate-Limit-Probleme, die durch zu viele parallel aufgebaute Sessions entstehen.
 
     Raises:
         ValueError: Wenn kein `OPENAI_API_KEY` bereitsteht.
@@ -57,7 +64,9 @@ async def plan_searches(query: str, settings: ModelSettings) -> WebSearchPlan:
 
     last_error: Exception | None = None
     for attempt in range(3):
-        # KI-Aufruf: wir reichen Versuchszahl durch, um Prompt ggf. zu schaerfen.
+        # Wir lassen dem Modell bis zu drei Versuche, auch wenn z. B. JSON-Parsing
+        # fehlschlägt. Je Versuch verschärfen wir den Prompt, damit die KI lernt,
+        # worauf es ankommt (siehe `_invoke_planner_model`).
         raw = await _invoke_planner_model(query, settings, attempt)
         raw = str(raw or "")
 
@@ -72,6 +81,8 @@ async def plan_searches(query: str, settings: ModelSettings) -> WebSearchPlan:
             continue
 
         if len(plan.searches) != HOW_MANY_SEARCHES:
+            # Wir verlangen exakt HOW_MANY_SEARCHES Einträge; alles andere würde
+            # nachgelagerte Komponenten aus dem Tritt bringen.
             last_error = ValueError("Modell lieferte eine unerwartete Anzahl von Suchanfragen")
             await asyncio.sleep(0)
             continue
@@ -106,6 +117,10 @@ async def _invoke_planner_model(query: str, settings: ModelSettings, attempt: in
         "Nur Heimwerker- und DIY-Themen sind zulaessig. Antworte nur mit 'REJECT', wenn das Anliegen eindeutig nicht DIY ist."
     )
 
+    # Je weiterer Versuch liefern wir dem Modell mehr Hinweise: beim zweiten Versuch
+    # erinnern wir an typische DIY-Themen, beim dritten zwingen wir noch einmal explizit
+    # die JSON-Struktur. So erhöhen wir schrittweise die Erfolgswahrscheinlichkeit.
+
     if attempt == 1:
         system_prompt += " Bedenke: Laminat verlegen, bauen, reparieren etc. sind typische DIY-Themen."
     elif attempt == 2:
@@ -125,8 +140,9 @@ async def _invoke_planner_model(query: str, settings: ModelSettings, attempt: in
     metadata = dict(call_kwargs.get("metadata") or {})
     metadata.update({"agent": "planner", "attempt": str(attempt), "query": query})
     call_kwargs["metadata"] = {k: str(v) for k, v in metadata.items()}
-    if OPENAI_TRACING_ENABLED:
-        call_kwargs["trace_id"] = str(uuid4())
+    # Hinweis: Wir verzichten bewusst auf ein `trace_id`-Feld, weil die aktuelle
+    # OpenAI Responses-API diesen Parameter nicht akzeptiert. Tracing aktiviert
+    # dennoch `util.openai_tracing` automatisch über Umgebungssvariablen.
 
     # OpenAI-Aufruf mit Tracing einbetten (lokal + Plattform).
     response = await traced_completion(
@@ -143,7 +159,11 @@ async def _invoke_planner_model(query: str, settings: ModelSettings, attempt: in
 
 
 def _heuristic_plan(query: str) -> WebSearchPlan | None:
-    """Erstellt eine einfache Notfall-Planung mit typischen DIY-Facetten."""
+    """Erstellt eine einfache Notfall-Planung mit typischen DIY-Facetten.
+
+    Diese Funktion springt ein, wenn das LLM dreimal scheitert. Wir geben der Pipeline
+    dann trotzdem drei gut bekannte Suchfacetten mit, damit der Flow nicht komplett
+    abbricht (lieber heuristisch als gar nicht)."""
 
     seeds = [
         ("Materialien & Werkzeuge", f"Materialien und Werkzeuge fuer {query}"),
@@ -161,7 +181,11 @@ def _heuristic_plan(query: str) -> WebSearchPlan | None:
 
 
 def _ensure_premium_slot(plan: WebSearchPlan, query: str) -> WebSearchPlan:
-    """Fuegt bei Material-bezogenen Queries einen Premium-Slot hinzu."""
+    """Fuegt bei Material-bezogenen Queries einen Premium-Slot hinzu.
+
+    Für bestimmte Suchbegriffe (z. B. Laminat) brauchen wir einen zusätzlichen Slot,
+    damit nach Premium-/Markenoptionen gesucht wird. Wir ergänzen ihn nur, wenn die
+    Liste bislang keinen entsprechenden Eintrag enthält."""
 
     keywords = {"laminat", "parkett", "material", "boden"}
     lowered = query.lower()

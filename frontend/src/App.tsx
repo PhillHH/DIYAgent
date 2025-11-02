@@ -1,4 +1,5 @@
 ﻿import axios from "axios";
+import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 
@@ -106,7 +107,7 @@ function App(): JSX.Element {
 
           await wait(baseDelay, controller.signal);
           await poll();
-        } catch (error) {
+    } catch (error) {
           if (controller.signal.aborted) {
             return;
           }
@@ -187,7 +188,7 @@ function App(): JSX.Element {
     const previousKind = previousKindRef.current;
 
     if (uiState.kind === "done" && previousKind !== "done") {
-      toast.success("E-Mail versendet – bitte Posteingang prüfen.");
+      toast.success("Home Task AI hat deinen Projektplan verschickt – bitte Posteingang prüfen.");
     } else if (uiState.kind === "error" && previousKind !== "error") {
       toast.error(uiState.message ?? "Unbekannter Fehler");
     } else if (uiState.kind === "rejected" && previousKind !== "rejected") {
@@ -202,8 +203,8 @@ function App(): JSX.Element {
 
   const errorCardClass = `card-glass ${
     uiState.kind === "rejected"
-      ? "border-rose-400/40 bg-rose-500/20 text-rose-100"
-      : "border-rose-400/40 bg-rose-500/15 text-rose-100"
+      ? "border-rose-200 bg-rose-50 text-rose-700"
+      : "border-rose-200 bg-rose-100/70 text-rose-700"
   }`;
 
   return (
@@ -213,18 +214,18 @@ function App(): JSX.Element {
           <Hero />
 
           {showSuccessBanner && (
-            <div role="alert" className="card-glass border-emerald-400/40 bg-emerald-400/15 text-emerald-100">
-              <strong className="block text-emerald-200">E-Mail versendet.</strong>
-              <span>Bitte Posteingang prüfen. Der Bericht sollte in wenigen Minuten eintreffen.</span>
+            <div role="alert" className="card-glass border-emerald-200 bg-emerald-50 text-emerald-700">
+              <strong className="block text-emerald-700">E-Mail versendet.</strong>
+              <span>Bitte Posteingang prüfen. Dein Projekt-Report trifft gleich ein.</span>
             </div>
           )}
 
           {showErrorBanner && (
             <div role="alert" className={errorCardClass}>
-              <strong className="block text-rose-200">
+              <strong className="block text-rose-700">
                 {uiState.kind === "rejected" ? "Anfrage konnte nicht verarbeitet werden." : "Es ist ein Fehler aufgetreten."}
               </strong>
-              {currentDetail && <span className="text-rose-100/80">{currentDetail}</span>}
+              {currentDetail && <span className="text-rose-600/80">{currentDetail}</span>}
             </div>
           )}
 
@@ -239,12 +240,12 @@ function App(): JSX.Element {
 
           <StatusStepper uiState={uiState} detail={stepperDetail} />
 
-          <footer className="pb-6 text-center text-xs text-slate-400">
-            © {new Date().getFullYear()} DIY Research Agent · Erstellt als Forschungsprototyp
-          </footer>
-        </div>
+          <footer className="pb-6 text-center text-xs text-stone-500">
+            © {new Date().getFullYear()} Home Task AI · Dein digitaler Heimwerker-Planer
+      </footer>
+    </div>
       </div>
-      <Toaster richColors theme="dark" position="top-center" closeButton />
+      <Toaster richColors theme="light" position="top-center" closeButton />
     </>
   );
 }

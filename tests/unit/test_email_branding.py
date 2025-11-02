@@ -50,9 +50,10 @@ def test_email_branding_contains_header_toC_and_styling() -> None:
     html = _render_html(_sample_report(), product_results=_sample_products())
 
     assert "class=\"brand-header\"" in html
+    assert "Home Task AI" in html
     assert "max-width: 720px" in html
-    assert "prefers-color-scheme: dark" in html
     assert "class=\"button-primary\"" in html
+    assert "#0f766e" in html
     assert html.count("https://www.bauhaus") >= 3
     assert "mail.google.com" not in html
 

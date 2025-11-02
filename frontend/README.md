@@ -1,6 +1,6 @@
-# DIY Research Agent – Frontend
+# Home Task AI – Frontend
 
-> React/Vite UI, das E-Mail-Adresse und DIY-Anfrage entgegennimmt, Backend-Jobs startet und Statusphasen visualisiert.
+> React/Vite-App, die Heimwerker:innen bei Planung, Einkauf und Status-Tracking ihrer Projekte unterstützt.
 
 ## Schnellzugriff
 - [Backend-README](../README.md) – Gesamtsystem & Docs-Index
@@ -51,7 +51,7 @@ Weitere Assets (z. B. Icons von `lucide-react`) werden direkt in den Komponenten
 
 ## Styling & Interaktionen
 - Tailwind CSS v4 + `@tailwindcss/forms`/`@tailwindcss/typography`.
-- Glas-Optik (`card-glass`), Glow-Buttons (`btn-primary`) und animierte Hintergründe (`aurora-float`, `grid-shift`) werden zentral in `index.css` gepflegt.
+- Helle Stein- und Beigetöne, smaragdgrüne Akzente sowie weiche Schatten werden zentral in `index.css` gepflegt.
 - Motion-Effekte (Fade/Slide) via `framer-motion`, Toasts mit `sonner`.
 
 ## Tests & Linting

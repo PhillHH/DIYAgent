@@ -6,7 +6,7 @@
 - [Model-Settings](model_settings.py) – Standardparameter der OpenAI-Clients
 
 ## Zweck
-- Planner, Search, Writer und Emailer bilden den fachlichen Kern der DIY-/KI-Control-Recherche.
+- Planner, Search, Writer und Emailer bilden den fachlichen Kern der Heimwerker-/KI-Control-Recherche.
 - KI-Modelle (OpenAI) planen Suchstrategien, konsolidieren Webinhalte und erzeugen Premium-Markdown-Reports.
 - Der Emailer rendert den Report in hochwertiges HTML und versendet ihn via SendGrid.
 

@@ -1,4 +1,4 @@
-# Deep Research Agent
+# Home Task AI
 
 > Navigiere direkt zu den Detail-Dokumentationen über den folgenden Index.
 
@@ -24,7 +24,7 @@
   - [`CHANGELOG.md`](CHANGELOG.md) – Historie relevanter Änderungen
 
 ## Zweck
-- KI-gestuetztes System fuer heimwerkerbezogene Recherche, Zusammenfassung und E-Mail-Versand.
+- Home Task AI ist ein KI-gestütztes System für heimwerkerbezogene Recherche, Zusammenfassung und E-Mail-Versand.
 - Modulare Agenten (Planer, Rechercheur, Autor, E-Mailer) bilden einen vollständigen End-to-End-Flow.
 - LLM-basierte Guardrails stellen sicher, dass fachfremde oder policy-widrige Anfragen automatisch abgelehnt werden.
 

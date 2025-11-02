@@ -1,6 +1,6 @@
-"""E-Mail-Agent zum Versand der DIY-Berichte via SendGrid.
+"""E-Mail-Agent zum Versand der Home-Task-AI-Projektberichte via SendGrid.
 
-Das Modul wandelt den Markdown-Report in minimalistisches HTML um und sendet
+Das Modul wandelt den Markdown-Report in typografisch formatiertes HTML um und sendet
 ihn ueber den SendGrid-Endpunkt. Vor dem Versand werden Guardrails und Felder
 validiert."""
 
@@ -25,12 +25,12 @@ SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send"
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_BRAND = {
-    "name": "DIY Research Agent",
+    "name": "Home Task AI",
     "logo": "https://example.com/logo.png",
-    "primary": "#1a7f72",
-    "secondary": "#ecfdf5",
-    "font_stack": '"Inter", "Segoe UI", Arial, sans-serif',
-    "cta_url": "https://diyresearch.agent/app",
+    "primary": "#0f766e",
+    "secondary": "#f8f4ec",
+    "font_stack": '"Rubik", "Inter", "Segoe UI", sans-serif',
+    "cta_url": "https://hometask.ai/app",
 }
 
 DEFAULT_META = {
@@ -95,6 +95,7 @@ async def send_email(
         raise ValueError("Die E-Mail ueberschreitet die zulaessige Groesse")
 
     _LOGGER.debug("Renderte Premium-E-Mail mit %s Zeichen", len(html_content))
+    _LOGGER.info("EMAIL preview length: %s", len(html_content))
 
     payload = _build_payload(report, to_email, html_content)
     links = _extract_links(html_content)
@@ -310,7 +311,7 @@ def _replace_existing_toc(
 
 
 def _render_header(title: str, brand: dict[str, str], meta: dict[str, str]) -> str:
-    brand_name = brand.get("name", "DIY Research Agent")
+    brand_name = brand.get("name", "Home Task AI")
     logo_url = brand.get("logo")
 
     if logo_url:
@@ -379,21 +380,22 @@ def _render_product_list(products: Sequence[ProductItem]) -> str:
         note_block = (
             f"<span class=\"product-note\">{html.escape(note)}</span>" if note else ""
         )
-        url_str = str(product.url)
-        if url_str.startswith("https://www.bauhaus."):
-            title_html = (
-                f"<a href=\"{html.escape(url_str)}\" rel=\"noopener\" aria-label=\"Produktlink: {html.escape(product.title)}\">"
-                f"{html.escape(product.title)}</a>"
-            )
-        else:
-            title_html = f"<span class=\"product-title\">{html.escape(product.title)}</span>"
+        try:
+            cleaned_url = clean_product_url(str(product.url))
+        except ValueError as exc:
+            _LOGGER.info("E-Mail Produktlink verworfen (URL): %s (%s)", product.url, exc)
+            continue
+
         items.append(
             "<li class=\"product-item\">"
-            f"{title_html}"
+            f"<a href=\"{html.escape(cleaned_url)}\" rel=\"noopener\" aria-label=\"Produktlink: {html.escape(product.title)}\">{html.escape(product.title)}</a>"
             f"<span class=\"product-meta\">{html.escape(price_text)}</span>"
             f"{note_block}"
             "</li>"
         )
+
+    if not items:
+        return ""
 
     return (
         "<section class=\"section products\" id=\"einkaufsliste\">"
@@ -417,11 +419,11 @@ def _render_cta(brand: dict[str, str]) -> str:
 
 
 def _render_signature(brand: dict[str, str]) -> str:
-    brand_name = brand.get("name", "DIY Research Agent")
+    brand_name = brand.get("name", "Home Task AI")
     return (
         "<section class=\"signature\" id=\"signatur\">"
         "<p>Freundliche Grüße</p>"
-        f"<p>{html.escape(brand_name)} · Automatisierter DIY-Service</p>"
+        f"<p>{html.escape(brand_name)} · Automatisierter Heimwerker-Service</p>"
         "<p class=\"legal\">Du erhältst diese Nachricht, weil du einen Premium-Report angefordert hast. Bitte prüfe Schutz- und Entsorgungshinweise vor der Umsetzung.</p>"
         "</section>"
     )
@@ -431,13 +433,13 @@ def _extract_title(markdown: str) -> str:
     for line in markdown.splitlines():
         if line.startswith("# "):
             return line[2:].strip()
-    return "DIY-Projekt"
+    return "Heimwerker-Projekt"
 
 
 def _premium_styles(brand: dict[str, str]) -> str:
-    primary = brand.get("primary", "#1a7f72")
-    secondary = brand.get("secondary", "#ecfdf5")
-    font_stack = brand.get("font_stack", '"Inter", "Segoe UI", Arial, sans-serif')
+    primary = brand.get("primary", "#0f766e")
+    secondary = brand.get("secondary", "#f8f4ec")
+    font_stack = brand.get("font_stack", '"Rubik", "Inter", "Segoe UI", sans-serif')
 
     return f"""
     :root {{

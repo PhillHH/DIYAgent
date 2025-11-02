@@ -1,8 +1,9 @@
-"""Asynchrone Orchestrierung des DIY-Research-Flows."""
+"""Asynchrone Orchestrierung des Home-Task-AI-Flows."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from typing import Optional
 
 from agents.emailer import send_email
@@ -14,12 +15,14 @@ from agents.model_settings import (
     ModelSettings,
 )
 from agents.planner import plan_searches
-from agents.search import perform_searches
+from agents.search import perform_searches, perform_product_enrichment
 from agents.writer import write_report
 from guards.llm_input_guard import classify_query_llm
 from guards.llm_output_guard import audit_report_llm
 from orchestrator.status import set_status
+from models.types import ProductItem
 
+_LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class SettingsBundle:
@@ -65,12 +68,28 @@ async def run_job(
         plan = await plan_searches(query, bundle.planner)
 
         set_status(job_id, "searching", None)
-        summaries, product_results = await perform_searches(
+        summaries, _ = await perform_searches(
             plan,
             bundle.searcher,
             user_query=query,
             category=guard_result.category,
         )
+        product_results: list[ProductItem] = []
+        is_diy = (guard_result.category or "").upper() == "DIY"
+        if is_diy:
+            product_results = await perform_product_enrichment(
+                query,
+                summaries,
+                bundle.searcher,
+            )
+        if product_results:
+            _LOGGER.info(
+                "SEARCH products: %d %s",
+                len(product_results),
+                [item.url for item in product_results[:2]],
+            )
+        else:
+            _LOGGER.warning("SEARCH products: keine Produkte extrahiert")
         job_context["product_results"] = [item.model_dump() for item in product_results]
 
         set_status(job_id, "writing", None)
@@ -100,7 +119,7 @@ async def run_job(
             if isinstance(link, str) and "bauhaus" in link.lower()
         ]
         payload = {
-            "email_links": bauhaus_links,
+            "email_links": list(bauhaus_links),
             "email_preview": email_result.get("html_preview"),
             "product_results": job_context.get("product_results"),
         }

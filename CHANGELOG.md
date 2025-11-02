@@ -6,6 +6,8 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert. Forma
 - Dokumentations-Refresh inkl. globalem Docs-Index und Querverweisen.
 - Neue README-Dateien für `config/`, `util/` und `tests/`.
 - Initialer `CHANGELOG.md`.
+- Neue `tests/unit/test_pipeline_products.py`, `test_writer_no_placeholders.py`, `test_email_links.py` sichern den Bauhaus-Link-Fluss und verhindern Platzhalter-Links.
+- Projektbranding auf "Home Task AI" aktualisiert (Frontend, E-Mail-Template, Dokumentation).
 
 ## [2025-11-01]
 ### Hinzugefügt
