@@ -179,6 +179,32 @@ a:hover {
   opacity: 0.55;
 }
 
+.animate-fade-up {
+  opacity: 0;
+  transform: translate3d(0, var(--fade-translate, 24px), 0);
+  animation: fade-up var(--fade-duration, 0.6s) ease-out forwards;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--fade-translate, 24px), 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
+
 @keyframes aurora-float {
   0% {
     transform: translate3d(-3%, -4%, 0) scale(1.02);

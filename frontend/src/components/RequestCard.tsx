@@ -1,13 +1,12 @@
-﻿import type { ComponentType } from "react";
 import { useMemo, useRef } from "react";
-import { motion } from "framer-motion";
-import { ClipboardList, Mail, Search, Sparkles } from "lucide-react";
+import type { JSX } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import clsx from "clsx";
 
 import { startResearch } from "../api";
+import { ClipboardListIcon, MailIcon, SearchIcon, SparklesIcon } from "./icons";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Bitte eine gültige E-Mail-Adresse eintragen." }),
@@ -19,12 +18,10 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-type LucideIcon = ComponentType<{ className?: string }>;
-
 type Feature = {
   title: string;
   description: string;
-  Icon: LucideIcon;
+  Icon: (props: { className?: string }) => JSX.Element;
   accent: string;
 };
 
@@ -47,27 +44,22 @@ const features: Feature[] = [
   {
     title: "Material & Einkauf",
     description: "Wir schlagen dir passende Bauhaus-Produkte samt kurzer Hinweise und Preisen vor – ohne stundenlange Recherche.",
-    Icon: Search,
+    Icon: SearchIcon,
     accent: "from-emerald-200/60 via-emerald-100/40 to-transparent",
   },
   {
     title: "Planung Schritt für Schritt",
     description: "Home Task AI strukturiert dein Projekt in klare Schritte, Checklisten und Zeitblöcke – bereit zum Loslegen.",
-    Icon: ClipboardList,
+    Icon: ClipboardListIcon,
     accent: "from-amber-200/60 via-amber-100/40 to-transparent",
   },
   {
     title: "Report im Postfach",
     description: "Der komplette Projektplan kommt als übersichtliche E-Mail. So hast du alles griffbereit in der Werkstatt.",
-    Icon: Mail,
+    Icon: MailIcon,
     accent: "from-emerald-300/50 via-emerald-200/40 to-transparent",
   },
 ];
-
-const containerVariants = {
-  hidden: { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0 },
-};
 
 export function RequestCard({
   isRunning,
@@ -121,27 +113,15 @@ export function RequestCard({
   const disabled = isRunning || isSubmitting;
 
   return (
-    <motion.section
-      className="card-glass"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
-    >
+    <section className="card-glass animate-fade-up" style={{ animationDelay: "0.12s" }}>
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <motion.form
-          className="space-y-5"
-          onSubmit={onSubmit}
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, ease: "easeOut", delay: 0.2 }}
-        >
+        <form className="space-y-5 animate-fade-up" onSubmit={onSubmit} style={{ animationDelay: "0.18s" }}>
           <div className="space-y-2">
             <label htmlFor="email" className="block text-sm font-medium text-stone-700">
               E-Mail-Adresse
             </label>
             <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-500" aria-hidden="true" />
+              <MailIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-500" />
               <input
                 id="email"
                 type="email"
@@ -185,47 +165,41 @@ export function RequestCard({
             )}
           </div>
 
-          <motion.button
+          <button
             type="submit"
-            className={clsx("btn-primary w-full sm:w-auto", disabled && "cursor-wait opacity-70")}
+            className={clsx(
+              "btn-primary w-full sm:w-auto transition-transform duration-150",
+              !disabled && "hover:-translate-y-0.5 active:scale-95",
+              disabled && "cursor-wait opacity-70",
+            )}
             disabled={disabled}
-            whileHover={{ scale: disabled ? 1 : 1.02 }}
-            whileTap={{ scale: disabled ? 1 : 0.99 }}
           >
-            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            <SparklesIcon className="h-4 w-4" />
             {isSubmitting ? "Projekt wird vorbereitet…" : "Projekt-Report starten"}
-          </motion.button>
-        </motion.form>
+          </button>
+        </form>
 
-        <motion.aside
-          className="flex flex-col gap-4"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.65, ease: "easeOut", delay: 0.25 }}
-        >
+        <aside className="flex flex-col gap-4 animate-fade-up" style={{ animationDelay: "0.22s" }}>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-stone-600">So unterstützt dich Home Task AI</h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
             {features.map(({ title, description, Icon, accent }, index) => (
-              <motion.div
+              <div
                 key={title}
-                className="group relative overflow-hidden rounded-2xl border border-stone-200 bg-white p-4 text-left shadow-sm transition-all duration-300"
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, ease: "easeOut", delay: 0.25 + index * 0.08 }}
-                whileHover={{ y: -4 }}
+                className="group relative overflow-hidden rounded-2xl border border-stone-200 bg-white p-4 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md animate-fade-up"
+                style={{ animationDelay: `${0.26 + index * 0.08}s` }}
               >
                 <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${accent} opacity-0 transition-opacity duration-300 group-hover:opacity-70`} />
                 <div className="relative mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
-                  <Icon className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+                  <Icon className="h-5 w-5 text-emerald-600" />
                 </div>
                 <h4 className="relative text-sm font-semibold text-stone-800">{title}</h4>
                 <p className="relative mt-1 text-sm text-stone-600">{description}</p>
-              </motion.div>
+              </div>
             ))}
           </div>
-        </motion.aside>
+        </aside>
       </div>
-    </motion.section>
+    </section>
   );
 }
 

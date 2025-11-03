@@ -1,17 +1,12 @@
-import { motion } from "framer-motion";
-import { Wrench } from "lucide-react";
+import type { JSX } from "react";
 
+import { WrenchIcon } from "./icons";
 export function Hero(): JSX.Element {
   return (
     <section className="bg-gradient-to-br from-amber-50 via-amber-100 to-stone-100">
       <div className="mx-auto max-w-screen-xl px-6 py-20">
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center">
-          <motion.div
-            className="space-y-6"
-            initial={{ opacity: 0, y: 32 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
-          >
+          <div className="space-y-6 animate-fade-up" style={{ animationDelay: "0.05s" }}>
             <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700">
               Home Task AI
             </span>
@@ -27,8 +22,8 @@ export function Hero(): JSX.Element {
             </div>
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <button className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3 font-medium text-white shadow-md transition hover:bg-emerald-600">
-                <Wrench className="h-5 w-5" aria-hidden="true" />
+              <button className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3 font-medium text-white shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:bg-emerald-600">
+                <WrenchIcon className="h-5 w-5" />
                 Projekt starten
               </button>
               <a
@@ -38,13 +33,11 @@ export function Hero(): JSX.Element {
                 Materialliste ansehen →
               </a>
             </div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            className="relative overflow-hidden rounded-3xl border border-emerald-100 bg-white/70 shadow-xl"
-            initial={{ opacity: 0, scale: 0.95, y: 24 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
+          <div
+            className="relative overflow-hidden rounded-3xl border border-emerald-100 bg-white/70 shadow-xl animate-fade-up"
+            style={{ animationDelay: "0.18s" }}
           >
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-100/60 via-transparent to-emerald-200/60" aria-hidden="true" />
             <div className="relative p-8">
@@ -76,7 +69,7 @@ export function Hero(): JSX.Element {
                 </li>
               </ul>
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </section>
