@@ -3,6 +3,10 @@
 Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert. Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
+- Planner- und Writer-Prompts überarbeitet: 5–8 Suchphasen mit Zeit/Kosten-Fokus, Meta-Zeile ohne Defaults, Follow-ups als "Als Nächstes"-Schritte, Einkaufsliste ausschließlich mit gelieferten Bauhaus-Produkten.
+- Writer berechnet Zeit- und Kostenrahmen heuristisch aus der Tabelle „Zeit & Kosten“ und harmonisiert die Meta-Zeile.
+- Emailer nutzt anwenderfreundliche Labels (Schwierigkeitsgrad, Zeitaufwand, Kostenrahmen, Region), generiert Intro-Karten und setzt Betreff/Preheader auf „{Projekt} – in {Dauer}, ca. {Budget}“.
+- Neuer gemeinsamer `ReportPayload`: Writer liefert strukturierte Daten, der Orchestrator speichert sie im Job-Payload und der Emailer rendert HTML via `templates/email.html.j2`.
 - Dokumentations-Refresh inkl. globalem Docs-Index und Querverweisen.
 - Neue README-Dateien für `config/`, `util/` und `tests/`.
 - Initialer `CHANGELOG.md`.

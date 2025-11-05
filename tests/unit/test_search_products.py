@@ -8,7 +8,6 @@ import json
 
 from agents import search
 from agents.model_settings import DEFAULT_SEARCHER
-from agents.schemas import WebSearchItem
 from models.types import ProductItem
 
 
@@ -45,14 +44,6 @@ def test_parse_product_response_filters_non_bauhaus_links() -> None:
     assert all("?" not in str(product.url) and "#" not in str(product.url) for product in products)
 
 
-def test_is_product_search_detects_bauhaus_queries() -> None:
-    item = WebSearchItem(reason="Einkaufsliste Bauhaus", query="Materialien site:bauhaus.info")
-    assert search._is_product_search(item) is True
-
-    normal_item = WebSearchItem(reason="Allgemein", query="Tipps zum Streichen")
-    assert search._is_product_search(normal_item) is False
-
-
 def test_parse_product_response_markdown_fallback() -> None:
     markdown = (
         "- [Schraubenset verzinkt](https://www.bauhaus.de/schrauben/verzinkt) – Set mit 120 Stk.\n"
@@ -70,8 +61,8 @@ def test_parse_product_response_markdown_fallback() -> None:
 async def test_perform_product_enrichment_uses_context(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    async def fake_invoke(item, settings, limiter, *, context=None):  # type: ignore[unused-argument]
-        captured["query"] = item.query
+    async def fake_invoke(query, settings, limiter, *, context=None):  # type: ignore[unused-argument]
+        captured["query"] = query
         captured["context"] = context
         return "ok", [
             ProductItem(

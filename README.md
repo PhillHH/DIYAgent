@@ -33,7 +33,7 @@
 Client -> FastAPI (/start_research) -> Orchestrator.run_job
   |-> Planner (OpenAI) -> WebSearchPlan
   |-> Search (OpenAI, parallel) -> Zusammenfassungen
-  |-> Writer (OpenAI) -> ReportData
+  |-> Writer (OpenAI) -> ReportData (+ ReportPayload)
   |-> Guards -> Validierung DIY/Markdown
   |-> Emailer (SendGrid) -> Versand
 Status-Store <- FastAPI (/status/{job_id})
@@ -99,10 +99,11 @@ Status-Store <- FastAPI (/status/{job_id})
 - Datenschutz: Kompletttraces koennen sensible Inhalte enthalten. In Produktion `OPENAI_TRACE_RAW=false` oder Tracing abschalten.
 
 ## Premium-E-Mail-Report
-- Aufbau: Writer generiert 1.800–2.500 Woerter mit festem Ablauf (Meta-Zeile, internes Inhaltsverzeichnis, Vorbereitung, Einkaufsliste Bauhaus, Schritt-für-Schritt inkl. Prüfkriterien, Qualität & Sicherheit, Zeit & Kosten, optionale Upgrades/Pflege, FAQ).
-- Rendering: Emailer wandelt Markdown in ein gebrandetes HTML (Gradient-Hintergrund, Header mit Logo, max-width 720 px, Dark-Mode, Callouts, Zebra-Tabellen).
-- Einkaufsliste: Zusätzlich zur Tabelle im Markdown wird eine verifizierte Produktliste aus Bauhaus-Links (info/de/at) eingebettet und programmgesteuert aus product_results erzeugt.
-- Limits & Performance: `MAX_EMAIL_SIZE` 500 KB; lange Inhalte werden nicht gekürzt. Bei grossen Projekten kann das Rendern einige Sekunden dauern.
+- Aufbau: Writer generiert 1.800–2.500 Wörter und liefert zusätzlich ein strukturiertes `ReportPayload` (Meta, Vorbereitung, Einkaufsliste, Schritte, Zeit & Kosten, FAQ, Follow-ups).
+- Rendering: Markdown-Report entsteht via Jinja2-Template (`templates/report.md.j2`), der Emailer nutzt das gleiche Payload-Objekt für `templates/email.html.j2` (Gradient-Hintergrund, Header mit Logo, max-width 720 px, Dark-Mode, Callouts, Zebra-Tabellen).
+- Einkaufsliste: Die strukturierte Shopping-Liste basiert ausschließlich auf den gelieferten Bauhaus-Produkten (`product_results`); Tracking-Parameter werden vor dem Rendern entfernt.
+- Status & Payload: Das Orchestrator-Payload (`/status/{job_id}`) enthält nun `report_payload` (JSON-serialisiert) sowie `product_results`, sodass Clients die strukturierte Darstellung weiterverwenden können.
+- Limits & Performance: `MAX_EMAIL_SIZE` 500 KB; lange Inhalte werden nicht gekürzt. Bei großen Projekten kann das Rendern einige Sekunden dauern.
 - Troubleshooting: 400er von OpenAI → Tool-Type pruefen (`web_search_preview`, `web_search_preview_2025_03_11`), bei SendGrid-401 API-Key und Berechtigungen validieren.
 
 ## E-Mail-Branding

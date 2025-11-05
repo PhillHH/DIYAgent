@@ -15,28 +15,84 @@ async def test_writer_without_products_omits_links(monkeypatch: pytest.MonkeyPat
     query = "Regal bauen"
     search_results = ["Kurze Vorbereitung"]
 
-    markdown = (
-        "# Projekt\n\n"
-        "## Inhaltsverzeichnis\n"
-        "- [Vorbereitung](#vorbereitung)\n"
-        "- [Einkaufsliste (Bauhaus-Links)](#einkaufsliste-bauhaus-links)\n\n"
-        "## Vorbereitung\nText\n\n"
-        "## Schritt-für-Schritt\n1. Schritt\n**Prüfkriterium:** Test\n\n"
-        "## Qualität & Sicherheit\nText\n\n"
-        "## Zeit & Kosten\n| Paket | Dauer | Kosten |\n| --- | --- | --- |\n"
-        "## FAQ\n### Frage?\nAntwort."
-    )
-
-    async def fake_invoke(messages, settings):  # type: ignore[unused-argument]
+    async def fake_invoke(messages, settings, schema=None):  # type: ignore[unused-argument]
         return json.dumps(
             {
                 "short_summary": "Kurz",
-                "markdown_report": markdown,
+                "report_payload": {
+                    "title": "Projekt",
+                    "teaser": "Start in das Projekt.",
+                    "meta": {
+                        "difficulty": "Anfänger",
+                        "duration": "4–6 h",
+                        "budget": "120–180 €",
+                        "region": "DE",
+                    },
+                    "toc": [],
+                    "preparation": {
+                        "heading": "Vorbereitung",
+                        "paragraphs": ["Text"],
+                        "bullets": [],
+                        "note": None,
+                    },
+                    "shopping_list": {
+                        "heading": "Einkaufsliste (Bauhaus-Links)",
+                        "intro": None,
+                        "items": [],
+                        "empty_hint": "Keine geprüften Bauhaus-Produkte verfügbar.",
+                    },
+                    "step_by_step": {
+                        "heading": "Schritt-für-Schritt",
+                        "steps": [
+                            {
+                                "title": "Schritt",
+                                "bullets": ["Aktion"],
+                                "check": "Test",
+                                "tip": None,
+                                "warning": None,
+                            }
+                        ],
+                    },
+                    "quality_safety": {
+                        "heading": "Qualität & Sicherheit",
+                        "paragraphs": ["Text"],
+                        "bullets": [],
+                        "note": None,
+                    },
+                    "time_cost": {
+                        "heading": "Zeit & Kosten",
+                        "rows": [
+                            {
+                                "work_package": "Test",
+                                "duration": "1 h",
+                                "cost": "10 €",
+                                "buffer": None,
+                            }
+                        ],
+                        "summary": None,
+                    },
+                    "options_upgrades": None,
+                    "maintenance": None,
+                    "faq": [
+                        {"question": "Frage?", "answer": "Antwort."},
+                        {"question": "Frage 2?", "answer": "Antwort."},
+                        {"question": "Frage 3?", "answer": "Antwort."},
+                        {"question": "Frage 4?", "answer": "Antwort."},
+                        {"question": "Frage 5?", "answer": "Antwort."},
+                    ],
+                    "followups": [
+                        "Als Nächstes: Planung abgleichen",
+                        "Als Nächstes: Materialliste prüfen",
+                        "Als Nächstes: Arbeitsfläche vorbereiten",
+                        "Als Nächstes: Sicherheitscheck durchführen",
+                    ],
+                    "search_summary": None,
+                },
                 "followup_questions": [
-                    "Frage 1",
-                    "Frage 2",
-                    "Frage 3",
-                    "Frage 4",
+                    "Als Nächstes: Planung abgleichen",
+                    "Als Nächstes: Materialliste prüfen",
+                    "Als Nächstes: Arbeitsfläche vorbereiten",
+                    "Als Nächstes: Sicherheitscheck durchführen",
                 ],
             }
         )
@@ -45,8 +101,8 @@ async def test_writer_without_products_omits_links(monkeypatch: pytest.MonkeyPat
 
     report = await write_report(query, search_results, DEFAULT_WRITER, product_results=[])
 
-    assert "Keine geprüften Bauhaus-Produkte verfügbar" in report.markdown_report
-
+    assert report.payload is not None
+    assert report.payload.shopping_list.items == []
     einkauf_index = report.markdown_report.lower().find("## einkaufsliste (bauhaus-links)")
     assert einkauf_index != -1
     einkauf_section = report.markdown_report[einkauf_index:]

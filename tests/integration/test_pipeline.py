@@ -4,7 +4,19 @@ from __future__ import annotations
 
 import pytest
 
-from agents.schemas import ReportData, WebSearchItem, WebSearchPlan
+from agents.schemas import ReportData, WebSearchItem, WebSearchPlan, SearchPhase
+from models.report_payload import (
+    FAQItem,
+    NarrativeSection,
+    ReportMeta,
+    ReportPayload,
+    ShoppingItem,
+    ShoppingList,
+    StepDetail,
+    StepsSection,
+    TimeCostRow,
+    TimeCostSection,
+)
 from models.types import ProductItem
 from guards.schemas import InputGuardResult, OutputGuardResult
 from orchestrator.pipeline import SettingsBundle, run_job
@@ -18,8 +30,8 @@ async def test_run_job_completes(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_plan(query, settings):  # type: ignore[unused-argument]
         return WebSearchPlan(
             searches=[
-                WebSearchItem(reason="Materialien", query="Materialien fuer Regal"),
-                WebSearchItem(reason="Werkzeuge", query="Werkzeug fuer Regal"),
+                WebSearchItem(reason=SearchPhase.MATERIAL_WERKZEUGE, query="Materialien fuer Regal"),
+                WebSearchItem(reason=SearchPhase.VORBEREITUNG_PLANUNG, query="Werkzeug fuer Regal"),
             ]
         )
 
@@ -40,10 +52,38 @@ async def test_run_job_completes(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     async def fake_writer(query, summaries, settings, category=None, product_results=None):  # type: ignore[unused-argument]
+        payload = ReportPayload(
+            title="Bericht",
+            teaser="Kurze Zusammenfassung",
+            meta=ReportMeta(difficulty="Anfänger", duration="4–6 h", budget="120–180 €"),
+            toc=[],
+            preparation=NarrativeSection(heading="Vorbereitung", paragraphs=summaries, bullets=[], note=None),
+            shopping_list=ShoppingList(
+                items=[
+                    ShoppingItem(
+                        category="Material",
+                        product="Bauhaus Test",
+                        quantity="1",
+                        rationale="Hauptprodukt",
+                        price="ca. 10 €",
+                        url="https://www.bauhaus.info/test",
+                    )
+                ]
+            ),
+            step_by_step=StepsSection(heading="Schritt-für-Schritt", steps=[StepDetail(title="Montage", bullets=[], check="OK")]),
+            quality_safety=NarrativeSection(heading="Qualität & Sicherheit", paragraphs=[], bullets=[], note=None),
+            time_cost=TimeCostSection(heading="Zeit & Kosten", rows=[TimeCostRow(work_package="Test", duration="1 h", cost="10 €")]),
+            options_upgrades=None,
+            maintenance=None,
+            faq=[FAQItem(question="Frage", answer="Antwort") for _ in range(5)],
+            followups=["Als Nächstes: Kontrolle" for _ in range(4)],
+            search_summary=None,
+        )
         return ReportData(
             short_summary="Kurze Zusammenfassung",
             markdown_report="# Bericht\n\nDIY-Inhalt",
-            followup_questions=["Frage 1", "Frage 2", "Frage 3"],
+            followup_questions=payload.followups,
+            payload=payload,
         )
 
     async def fake_email(*args, **kwargs):  # type: ignore[unused-argument]
@@ -55,10 +95,14 @@ async def test_run_job_completes(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_output_guard(query, report_md, settings):  # type: ignore[unused-argument]
         return OutputGuardResult(allowed=True, issues=[], category="DIY")
 
+    async def fake_enrichment(*args, **kwargs):  # type: ignore[unused-argument]
+        return []
+
     monkeypatch.setattr("orchestrator.pipeline.classify_query_llm", fake_input_guard)
     monkeypatch.setattr("orchestrator.pipeline.audit_report_llm", fake_output_guard)
     monkeypatch.setattr("orchestrator.pipeline.plan_searches", fake_plan)
     monkeypatch.setattr("orchestrator.pipeline.perform_searches", fake_search)
+    monkeypatch.setattr("orchestrator.pipeline.perform_product_enrichment", fake_enrichment)
     monkeypatch.setattr("orchestrator.pipeline.write_report", fake_writer)
     monkeypatch.setattr("orchestrator.pipeline.send_email", fake_email)
 
@@ -66,5 +110,6 @@ async def test_run_job_completes(monkeypatch: pytest.MonkeyPatch) -> None:
     await run_job(job_id, "Regal im Keller bauen", "user@example.com", SettingsBundle())
 
     status = get_status(job_id)
-    assert status["phase"] == "done"
+    assert status["phase"] == "done", status
+    assert status.get("payload", {}).get("report_payload")
 

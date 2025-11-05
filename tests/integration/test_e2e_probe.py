@@ -43,7 +43,11 @@ def test_e2e_probe_success(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Captu
             {
                 "phase": "done",
                 "detail": None,
-                "payload": {"email_links": ["https://www.bauhaus.info/test"], "email_preview": "<html>"},
+                "payload": {
+                    "email_links": ["https://www.bauhaus.info/test"],
+                    "email_preview": "<html>",
+                    "report_payload": {"title": "Projekt X"},
+                },
                 "job_id": "fake-job",
             },
         ]

@@ -8,7 +8,7 @@ import pytest
 
 import config
 from agents.model_settings import DEFAULT_SEARCHER
-from agents.schemas import WebSearchItem, WebSearchPlan
+from agents.schemas import WebSearchItem, WebSearchPlan, SearchPhase
 from agents import search as search_module
 
 
@@ -19,7 +19,9 @@ def test_validate_payload_rejects_forbidden_key() -> None:
 
 @pytest.mark.asyncio
 async def test_search_payload_without_forbidden_keys(monkeypatch: pytest.MonkeyPatch) -> None:
-    plan = WebSearchPlan(searches=[WebSearchItem(reason="Test", query="Laminate verlegen")])
+    plan = WebSearchPlan(
+        searches=[WebSearchItem(reason=SearchPhase.VORBEREITUNG_PLANUNG, query="Laminate verlegen")]
+    )
 
     monkeypatch.setattr(config, "OPENAI_WEB_TOOL_TYPE", "web_search_preview")
 
@@ -53,7 +55,9 @@ async def test_search_payload_without_forbidden_keys(monkeypatch: pytest.MonkeyP
 
 @pytest.mark.asyncio
 async def test_search_fallback_without_tool_choice(monkeypatch: pytest.MonkeyPatch) -> None:
-    plan = WebSearchPlan(searches=[WebSearchItem(reason="Test", query="Laminate verlegen")])
+    plan = WebSearchPlan(
+        searches=[WebSearchItem(reason=SearchPhase.VORBEREITUNG_PLANUNG, query="Laminate verlegen")]
+    )
 
     monkeypatch.setattr(config, "OPENAI_WEB_TOOL_TYPE", "web_search_preview")
 

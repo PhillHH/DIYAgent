@@ -15,6 +15,7 @@ dependencies = [
     "fastapi>=0.110",
     "httpx[aio]>=0.27",
     "markdown>=3.5",
+    "jinja2>=3.1",
     "openai>=1.30",
     "pydantic>=2.6",
     "python-dotenv>=1.0",

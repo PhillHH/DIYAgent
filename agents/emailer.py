@@ -9,12 +9,22 @@ from __future__ import annotations
 import html
 import logging
 import re
+from pathlib import Path
 from typing import List, Optional, Sequence
 
 import httpx
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markdown import markdown as md_to_html
 
 from agents.schemas import ReportData
+from models.report_payload import (
+    NarrativeSection,
+    ReportPayload,
+    ReportTOCEntry,
+    ShoppingItem,
+    ShoppingList,
+    TimeCostSection,
+)
 from models.types import ProductItem
 from config import FROM_EMAIL, SENDGRID_API_KEY
 from util.url_sanitizer import clean_product_url
@@ -23,6 +33,15 @@ MAX_EMAIL_SIZE = 500_000  # Zeichenbegrenzung fuer HTML-Inhalt
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send"
 _LOGGER = logging.getLogger(__name__)
+
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+_JINJA_ENV = Environment(
+    loader=FileSystemLoader(_TEMPLATE_DIR),
+    autoescape=select_autoescape(disabled_extensions=("html.j2",)),
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
+_EMAIL_TEMPLATE_NAME = "email.html.j2"
 
 DEFAULT_BRAND = {
     "name": "Home Task AI",
@@ -34,9 +53,9 @@ DEFAULT_BRAND = {
 }
 
 DEFAULT_META = {
-    "level": "Anfänger",
-    "duration": "14–18 h",
-    "budget": "250–450 €",
+    "level": "",
+    "duration": "",
+    "budget": "",
     "region": "DE",
 }
 
@@ -85,19 +104,28 @@ async def send_email(
     if not EMAIL_REGEX.match(to_email or ""):
         raise ValueError("Die Zieladresse ist ungueltig")
 
-    html_content = _render_html(
-        report,
-        product_results=product_results,
-        brand=brand,
-        meta=meta,
-    )
+    if report.payload:
+        html_content, subject, meta_info = _render_structured_email(
+            report,
+            report.payload,
+            brand=brand,
+            meta_override=meta,
+        )
+    else:
+        derived_meta = _extract_meta_from_report(report.markdown_report)
+        html_content, subject, meta_info = _render_html_legacy(
+            report,
+            product_results=product_results,
+            brand=brand,
+            meta={**(meta or {}), **derived_meta},
+        )
     if len(html_content) > MAX_EMAIL_SIZE:
         raise ValueError("Die E-Mail ueberschreitet die zulaessige Groesse")
 
     _LOGGER.debug("Renderte Premium-E-Mail mit %s Zeichen", len(html_content))
     _LOGGER.info("EMAIL preview length: %s", len(html_content))
 
-    payload = _build_payload(report, to_email, html_content)
+    payload = _build_payload(report, to_email, html_content, subject)
     links = _extract_links(html_content)
     html_preview = html_content[:2000]
     response = await _post_sendgrid(payload)
@@ -110,14 +138,65 @@ async def send_email(
     }
 
 
-def _render_html(
+def _render_structured_email(
+    report: ReportData,
+    payload: ReportPayload,
+    *,
+    brand: Optional[dict],
+    meta_override: Optional[dict],
+) -> tuple[str, str, dict[str, str]]:
+    brand_data = _merge_brand(brand)
+    meta_info = _resolve_meta(meta_override)
+
+    if payload.meta.difficulty:
+        meta_info["level"] = payload.meta.difficulty
+    if payload.meta.duration:
+        meta_info["duration"] = payload.meta.duration
+    if payload.meta.budget:
+        meta_info["budget"] = payload.meta.budget
+    if payload.meta.region:
+        meta_info["region"] = payload.meta.region
+
+    working_payload = payload.model_copy(deep=True)
+    working_payload.shopping_list = _sanitize_shopping_list_items(working_payload.shopping_list)
+    working_payload.toc = _build_structured_toc(working_payload)
+
+    summary_cards_html = _render_summary_cards_structured(report, working_payload, meta_info)
+    toc_html = _render_toc_entries(working_payload.toc)
+    sections_html = _render_structured_sections(working_payload)
+
+    subject = _derive_subject(working_payload.title, report, meta_info)
+    preheader = _build_preheader(report, working_payload.title, meta_info)
+    header_html = _render_header(working_payload.title, brand_data, meta_info)
+    cta_html = _render_cta(brand_data)
+    signature_html = _render_signature(brand_data)
+    styles = _premium_styles(brand_data)
+
+    template = _JINJA_ENV.get_template(_EMAIL_TEMPLATE_NAME)
+    html_document = template.render(
+        subject=subject,
+        preheader=preheader,
+        styles=styles,
+        header_html=header_html,
+        toc_html=toc_html,
+        summary_cards_html=summary_cards_html,
+        sections_html=sections_html,
+        cta_html=cta_html,
+        attachment_note=DEFAULT_ATTACHMENT_NOTE,
+        signature_html=signature_html,
+    )
+
+    return html_document, subject, meta_info
+
+
+def _render_html_legacy(
     report: ReportData,
     *,
     product_results: Optional[Sequence[ProductItem]] = None,
     brand: Optional[dict] = None,
     meta: Optional[dict] = None,
-) -> str:
-    """Wandelt Markdown in ein gebrandetes Premium-HTML-Dokument um."""
+) -> tuple[str, str, dict[str, str]]:
+    """Legacy-Markdown-Rendering fuer KI_CONTROL oder Rueckfallpfade."""
 
     brand_data = _merge_brand(brand)
     meta_info = _resolve_meta(meta)
@@ -134,11 +213,17 @@ def _render_html(
     html_body = _enhance_tables(html_body)
     html_body = _enhance_blockquotes(html_body)
 
+    meta_from_report = _extract_meta_from_report(markdown_original)
+    for key, value in meta_from_report.items():
+        if value:
+            meta_info[key] = value
+
+    info_blocks = _render_summary_cards(report, meta_info)
     toc_html = _render_toc(toc_entries)
     product_html = _render_product_list(sanitized_products)
     title = _extract_title(markdown_original)
-    subject = _derive_subject(report)
-    preheader = _build_preheader(report)
+    subject = _derive_subject(title, report, meta_info)
+    preheader = _build_preheader(report, title, meta_info)
     header_html = _render_header(title, brand_data, meta_info)
     cta_html = _render_cta(brand_data)
     signature_html = _render_signature(brand_data)
@@ -162,6 +247,7 @@ def _render_html(
             {toc_html}
             {product_html}
             <div class="content" id="report-content">
+              {info_blocks}
               {html_body}
             </div>
             {cta_html}
@@ -172,13 +258,321 @@ def _render_html(
       </body>
     </html>
     """
-    return html_document
+    return html_document, subject, meta_info
 
 
-def _build_payload(report: ReportData, to_email: str, html_content: str) -> dict:
+def _sanitize_shopping_list_items(shopping: ShoppingList) -> ShoppingList:
+    sanitized = shopping.model_copy(deep=True)
+    cleaned_items: List[ShoppingItem] = []
+    for item in sanitized.items:
+        url_value: Optional[str] = None
+        if item.url:
+            try:
+                url_value = clean_product_url(str(item.url))
+            except ValueError:
+                url_value = str(item.url)
+        cleaned_items.append(
+            ShoppingItem(
+                position=item.position,
+                category=item.category,
+                product=item.product,
+                quantity=item.quantity,
+                rationale=item.rationale,
+                price=item.price,
+                url=url_value,
+            )
+        )
+    deduped: List[ShoppingItem] = []
+    seen_categories: set[str] = set()
+    for item in cleaned_items:
+        category_key = (item.category or "").strip().lower()
+        if category_key in seen_categories:
+            continue
+        seen_categories.add(category_key)
+        deduped.append(item)
+    sanitized.items = deduped
+    return sanitized
+
+
+def _build_structured_toc(payload: ReportPayload) -> List[ReportTOCEntry]:
+    entries: List[ReportTOCEntry] = []
+
+    def add(title: str, level: int = 2) -> None:
+        entries.append(ReportTOCEntry(title=title, anchor=_slugify(title), level=level))
+
+    add(payload.preparation.heading)
+    add(payload.shopping_list.heading)
+    add(payload.step_by_step.heading)
+    add(payload.quality_safety.heading)
+    add(payload.time_cost.heading)
+
+    if _has_narrative_content(payload.options_upgrades):
+        add(payload.options_upgrades.heading)
+    if _has_narrative_content(payload.maintenance):
+        add(payload.maintenance.heading)
+
+    add("FAQ")
+    add("Als Nächstes")
+    return entries
+
+
+def _render_toc_entries(entries: Sequence[ReportTOCEntry]) -> str:
+    if not entries:
+        return ""
+
+    items: List[str] = []
+    last_level = None
+    for entry in entries:
+        css_class = "toc-item" if entry.level == 2 else "toc-subitem"
+        if last_level is not None and entry.level < last_level:
+            items.append("<li class=\"toc-divider\"></li>")
+        items.append(
+            f"<li class=\"{css_class}\"><a href=\"#{html.escape(entry.anchor)}\" aria-label=\"Springe zu {html.escape(entry.title)}\">{html.escape(entry.title)}</a></li>"
+        )
+        last_level = entry.level
+
+    return (
+        "<nav class=\"toc\" aria-label=\"Inhaltsverzeichnis\">"
+        "<h2>Inhalt</h2>"
+        "<ul>" + "".join(items) + "</ul>"
+        "</nav>"
+    )
+
+
+def _render_summary_cards_structured(
+    report: ReportData,
+    payload: ReportPayload,
+    meta: dict[str, str],
+) -> str:
+    summary_text = html.escape((report.short_summary or payload.teaser).strip())
+    teaser_text = html.escape(payload.teaser.strip()) if payload.teaser else ""
+
+    meta_items = [
+        ("Schwierigkeitsgrad", meta.get("level", "")),
+        ("Zeitaufwand", meta.get("duration", "")),
+        ("Kostenrahmen", meta.get("budget", "")),
+        ("Region", meta.get("region", "")),
+    ]
+    meta_html = "".join(
+        f"<li><span>{html.escape(label)}:</span> {html.escape(value)}</li>"
+        for label, value in meta_items
+        if value and value.lower() != "k.a."
+    )
+
+    followup_entries: List[str] = []
+    for entry in payload.followups:
+        text = (entry or "").strip()
+        if not text:
+            continue
+        followup_entries.append(f"<li>{html.escape(text)}</li>")
+    followup_html = "".join(followup_entries)
+
+    search_summary = (
+        f"<p class=\"search-summary\"><strong>Recherchefokus:</strong> {html.escape(payload.search_summary)}</p>"
+        if payload.search_summary
+        else ""
+    )
+
+    return (
+        "<section class=\"intro-cards\">"
+        "<div class=\"card summary\">"
+        "<h3>Projektüberblick</h3>"
+        f"<p>{summary_text}</p>"
+        + (f"<p>{teaser_text}</p>" if teaser_text else "")
+        + search_summary
+        + "</div>"
+        "<div class=\"card meta\">"
+        "<h3>Kennzahlen</h3>"
+        f"<ul>{meta_html}</ul>"
+        "</div>"
+        + (
+            "<div class=\"card followup\"><h3>Nächste Schritte</h3><ul>"
+            + followup_html
+            + "</ul></div>"
+            if followup_html
+            else ""
+        )
+        + "</section>"
+    )
+
+
+def _render_structured_sections(payload: ReportPayload) -> str:
+    parts: List[str] = []
+    parts.append(_render_narrative_section(payload.preparation))
+    parts.append(_render_shopping_list_section(payload.shopping_list))
+    parts.append(_render_steps_section(payload.step_by_step))
+    parts.append(_render_narrative_section(payload.quality_safety))
+    parts.append(_render_time_cost_section(payload.time_cost))
+
+    if _has_narrative_content(payload.options_upgrades):
+        parts.append(_render_narrative_section(payload.options_upgrades))
+    if _has_narrative_content(payload.maintenance):
+        parts.append(_render_narrative_section(payload.maintenance))
+
+    parts.append(_render_faq_section(payload.faq))
+    parts.append(_render_followups_section(payload.followups))
+
+    return "".join(parts)
+
+
+def _render_narrative_section(section: Optional[NarrativeSection]) -> str:
+    if section is None:
+        return ""
+    section_id = _slugify(section.heading)
+    html_parts = [
+        f"<section class=\"section narrative\" id=\"{html.escape(section_id)}\">",
+        f"<a id=\"{html.escape(section_id)}\" name=\"{html.escape(section_id)}\"></a>",
+        f"<h2>{html.escape(section.heading)}</h2>",
+    ]
+    for paragraph in section.paragraphs:
+        html_parts.append(f"<p>{html.escape(paragraph)}</p>")
+    if section.bullets:
+        html_parts.append("<ul class=\"bullet-list\">")
+        for bullet in section.bullets:
+            html_parts.append(f"<li>{html.escape(bullet)}</li>")
+        html_parts.append("</ul>")
+    if section.note:
+        html_parts.append(f"<blockquote class=\"callout\">{html.escape(section.note)}</blockquote>")
+    html_parts.append("</section>")
+    return "".join(html_parts)
+
+
+def _render_shopping_list_section(shopping: ShoppingList) -> str:
+    section_id = _slugify(shopping.heading)
+    if not shopping.items:
+        return (
+            f"<section class=\"section products\" id=\"{html.escape(section_id)}\">"
+            f"<a id=\"{html.escape(section_id)}\" name=\"{html.escape(section_id)}\"></a>"
+            f"<h2>{html.escape(shopping.heading)}</h2>"
+            f"<p>{html.escape(shopping.empty_hint)}</p>"
+            "</section>"
+        )
+
+    header_html = (
+        f"<section class=\"section products\" id=\"{html.escape(section_id)}\">"
+        f"<a id=\"{html.escape(section_id)}\" name=\"{html.escape(section_id)}\"></a>"
+        f"<h2>{html.escape(shopping.heading)}</h2>"
+    )
+    intro_html = f"<p>{html.escape(shopping.intro)}</p>" if shopping.intro else ""
+    table_header = (
+        "<table class=\"table product-table\" role=\"table\">"
+        "<thead><tr><th>Position</th><th>Kategorie</th><th>Produkt</th><th>Menge</th><th>Begründung</th><th>ca. Preis</th><th>Link</th></tr></thead><tbody>"
+    )
+    rows: List[str] = []
+    for index, item in enumerate(shopping.items, start=1):
+        link_cell = "–"
+        if item.url:
+            link_cell = f"<a href=\"{html.escape(str(item.url))}\" rel=\"noopener\">Zum Artikel</a>"
+        rows.append(
+            "<tr>"
+            f"<td>{index}</td>"
+            f"<td>{html.escape(item.category)}</td>"
+            f"<td>{html.escape(item.product)}</td>"
+            f"<td>{html.escape(item.quantity)}</td>"
+            f"<td>{html.escape(item.rationale)}</td>"
+            f"<td>{html.escape(item.price or '–')}</td>"
+            f"<td>{link_cell}</td>"
+            "</tr>"
+        )
+    table_footer = "</tbody></table></section>"
+    return header_html + intro_html + table_header + "".join(rows) + table_footer
+
+
+def _render_steps_section(steps_section) -> str:
+    section_id = _slugify(steps_section.heading)
+    parts = [
+        f"<section class=\"section steps\" id=\"{html.escape(section_id)}\">",
+        f"<a id=\"{html.escape(section_id)}\" name=\"{html.escape(section_id)}\"></a>",
+        f"<h2>{html.escape(steps_section.heading)}</h2>",
+        "<div class=\"step-grid\">",
+    ]
+    for index, step in enumerate(steps_section.steps, start=1):
+        parts.append("<div class=\"step-card\">")
+        parts.append(
+            "<header>"
+            f"<span class=\"step-index\">{index}</span>"
+            f"<h3>Schritt {index}: {html.escape(step.title)}</h3>"
+            "</header>"
+        )
+        if step.bullets:
+            parts.append("<ul class=\"bullet-list\">")
+            for bullet in step.bullets:
+                parts.append(f"<li>{html.escape(bullet)}</li>")
+            parts.append("</ul>")
+        parts.append(f"<p class=\"step-check\"><strong>Prüfkriterium:</strong> {html.escape(step.check)}</p>")
+        if step.tip:
+            parts.append(f"<blockquote class=\"callout tip\">{html.escape(step.tip)}</blockquote>")
+        if step.warning:
+            parts.append(f"<blockquote class=\"callout warning\">{html.escape(step.warning)}</blockquote>")
+        parts.append("</div>")
+    parts.append("</div></section>")
+    return "".join(parts)
+
+
+def _render_time_cost_section(section: TimeCostSection) -> str:
+    section_id = _slugify(section.heading)
+    parts = [
+        f"<section class=\"section time-cost\" id=\"{html.escape(section_id)}\">",
+        f"<a id=\"{html.escape(section_id)}\" name=\"{html.escape(section_id)}\"></a>",
+        f"<h2>{html.escape(section.heading)}</h2>",
+    ]
+    if section.rows:
+        parts.append(
+            "<table class=\"table time-cost-table\" role=\"table\">"
+            "<thead><tr><th>Arbeitspaket</th><th>Dauer</th><th>Kosten</th><th>Puffer</th></tr></thead><tbody>"
+        )
+        for row in section.rows:
+            parts.append(
+                "<tr>"
+                f"<td>{html.escape(row.work_package)}</td>"
+                f"<td>{html.escape(row.duration)}</td>"
+                f"<td>{html.escape(row.cost)}</td>"
+                f"<td>{html.escape(row.buffer or '–')}</td>"
+                "</tr>"
+            )
+        parts.append("</tbody></table>")
+    if section.summary:
+        parts.append(f"<p>{html.escape(section.summary)}</p>")
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def _render_faq_section(faq_items) -> str:
+    parts = [
+        f"<section class=\"section faq\" id=\"{html.escape(_slugify('FAQ'))}\">",
+        f"<a id=\"{html.escape(_slugify('FAQ'))}\" name=\"{html.escape(_slugify('FAQ'))}\"></a>",
+        "<h2>FAQ</h2>",
+    ]
+    for item in faq_items:
+        parts.append(f"<h3>{html.escape(item.question)}</h3>")
+        parts.append(f"<p>{html.escape(item.answer)}</p>")
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def _render_followups_section(followups: Sequence[str]) -> str:
+    section_id = _slugify("Als Nächstes")
+    parts = [
+        f"<section class=\"section followups\" id=\"{html.escape(section_id)}\">",
+        f"<a id=\"{html.escape(section_id)}\" name=\"{html.escape(section_id)}\"></a>",
+        "<h2>Als Nächstes</h2>",
+        "<ul class=\"bullet-list\">",
+    ]
+    for entry in followups:
+        parts.append(f"<li>{html.escape(entry)}</li>")
+    parts.append("</ul></section>")
+    return "".join(parts)
+
+
+def _has_narrative_content(section: Optional[NarrativeSection]) -> bool:
+    if not section:
+        return False
+    return bool(section.paragraphs or section.bullets or section.note)
+
+
+def _build_payload(report: ReportData, to_email: str, html_content: str, subject: str) -> dict:
     """Erstellt den JSON-Payload fuer SendGrid."""
 
-    subject = _derive_subject(report)
     return {
         "personalizations": [
             {
@@ -196,11 +590,28 @@ def _build_payload(report: ReportData, to_email: str, html_content: str) -> dict
     }
 
 
-def _derive_subject(report: ReportData) -> str:
-    """Leitet die Betreffzeile aus dem Titel bzw. der Kurzfassung ab."""
+def _derive_subject(title: str, report: ReportData, meta: dict[str, str]) -> str:
+    """Leitet die Betreffzeile aus Titel und Meta-Informationen ab."""
 
-    headline = report.short_summary.split(".")[0].strip() or _extract_title(report.markdown_report)
-    return f"Premium DIY-Report: {headline}"
+    base = title.strip() if title else ""
+    if not base:
+        base = (report.short_summary.split(".")[0] if report.short_summary else "").strip()
+    if not base:
+        base = "Home Task AI Projektplan"
+
+    duration = (meta.get("duration") or "").strip()
+    budget = (meta.get("budget") or "").strip()
+
+    def _is_known(value: str) -> bool:
+        return bool(value) and value.lower() != "k.a."
+
+    if _is_known(duration) and _is_known(budget):
+        return f"{base} – in {duration}, ca. {budget}"
+    if _is_known(duration):
+        return f"{base} – in {duration}"
+    if _is_known(budget):
+        return f"{base} – ca. {budget}"
+    return f"{base} – dein DIY-Plan"
 
 
 def _build_toc(markdown: str) -> List[tuple[str, str, int]]:
@@ -228,7 +639,16 @@ def _build_toc(markdown: str) -> List[tuple[str, str, int]]:
 
 
 def _slugify(text: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", text.lower()).strip("-")
+    normalized = (
+        text.replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("Ä", "ae")
+        .replace("Ö", "oe")
+        .replace("Ü", "ue")
+        .replace("ß", "ss")
+    )
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized.lower()).strip("-")
     return slug or "section"
 
 
@@ -236,7 +656,10 @@ def _inject_heading_ids(html_body: str, entries: List[tuple[str, str, int]]) -> 
     updated = html_body
     for text, slug, level in entries:
         pattern = re.compile(rf"<h{level}(?:\s+[^>]*)?>\s*{re.escape(text)}\s*</h{level}>")
-        replacement = f"<h{level} id=\"{slug}\">{html.escape(text)}</h{level}>"
+        replacement = (
+            f"<a id=\"{slug}\" name=\"{slug}\"></a>"
+            f"<h{level} id=\"{slug}\" name=\"{slug}\">{html.escape(text)}</h{level}>"
+        )
         updated = pattern.sub(replacement, updated, count=1)
     return updated
 
@@ -250,15 +673,20 @@ def _enhance_blockquotes(html_body: str) -> str:
 
 
 def _render_toc(entries: List[tuple[str, str, int]]) -> str:
-    if not entries:
+    relevant_entries = [(text, slug, level) for text, slug, level in entries if level in {2, 3}]
+    if not relevant_entries:
         return ""
 
-    items = []
-    for text, slug, level in entries:
+    items: List[str] = []
+    last_level = None
+    for text, slug, level in relevant_entries:
         css_class = "toc-item" if level == 2 else "toc-subitem"
+        if last_level is not None and level < last_level:
+            items.append("<li class=\"toc-divider\"></li>")
         items.append(
             f"<li class=\"{css_class}\"><a href=\"#{slug}\" aria-label=\"Springe zu {html.escape(text)}\">{html.escape(text)}</a></li>"
         )
+        last_level = level
 
     return (
         "<nav class=\"toc\" aria-label=\"Inhaltsverzeichnis\">"
@@ -286,11 +714,29 @@ def _resolve_meta(meta: Optional[dict]) -> dict[str, str]:
     return data
 
 
-def _build_preheader(report: ReportData) -> str:
+def _build_preheader(report: ReportData, title: str, meta: dict[str, str]) -> str:
+    duration = (meta.get("duration") or "").strip()
+    budget = (meta.get("budget") or "").strip()
+
+    def _is_known(value: str) -> bool:
+        return bool(value) and value.lower() != "k.a."
+
+    if title and _is_known(duration) and _is_known(budget):
+        return f"{title} – in {duration}, ca. {budget}"[:180]
+
     summary = (report.short_summary or "").strip()
-    if not summary:
-        return "Premium DIY-Report – alle Schritte und Materialien auf einen Blick."
-    return summary[:180]
+    if summary:
+        return summary[:180]
+
+    info_parts: List[str] = []
+    if _is_known(duration):
+        info_parts.append(f"in {duration}")
+    if _is_known(budget):
+        info_parts.append(f"ca. {budget}")
+    if info_parts:
+        return f"Premium DIY-Report – {' und '.join(info_parts)}"[:180]
+
+    return "Premium DIY-Report – alle Schritte und Materialien auf einen Blick."
 
 
 def _replace_existing_toc(
@@ -324,11 +770,11 @@ def _render_header(title: str, brand: dict[str, str], meta: dict[str, str]) -> s
 
     chips = []
     if meta.get("level"):
-        chips.append(f"<span class=\"meta-chip\">Niveau: {html.escape(meta['level'])}</span>")
+        chips.append(f"<span class=\"meta-chip\">Schwierigkeitsgrad: {html.escape(meta['level'])}</span>")
     if meta.get("duration"):
-        chips.append(f"<span class=\"meta-chip\">Dauer: {html.escape(meta['duration'])}</span>")
+        chips.append(f"<span class=\"meta-chip\">Zeitaufwand: {html.escape(meta['duration'])}</span>")
     if meta.get("budget"):
-        chips.append(f"<span class=\"meta-chip\">Budget: {html.escape(meta['budget'])}</span>")
+        chips.append(f"<span class=\"meta-chip\">Kostenrahmen: {html.escape(meta['budget'])}</span>")
 
     chips_html = "".join(chips)
 
@@ -371,7 +817,12 @@ def _sanitize_products(products: Optional[Sequence[ProductItem]]) -> List[Produc
 
 def _render_product_list(products: Sequence[ProductItem]) -> str:
     if not products:
-        return ""
+        return (
+            "<section class=\"section products\" id=\"einkaufsliste\">"
+            "<h2>Einkaufsliste Bauhaus</h2>"
+            "<p>Keine geprüften Bauhaus-Produkte verfügbar.</p>"
+            "</section>"
+        )
 
     items: List[str] = []
     for product in products:
@@ -406,6 +857,53 @@ def _render_product_list(products: Sequence[ProductItem]) -> str:
     )
 
 
+def _render_summary_cards(report: ReportData, meta: dict[str, str]) -> str:
+    """Erzeugt Einleitungen mit Projekt-Short-Summary und Metadaten."""
+
+    summary = html.escape(report.short_summary.strip())
+    followups = report.followup_questions[:]
+    meta_items = [
+        ("Schwierigkeitsgrad", meta.get("level", "")),
+        ("Zeitaufwand", meta.get("duration", "")),
+        ("Kostenrahmen", meta.get("budget", "")),
+        ("Region", meta.get("region", "")),
+    ]
+    meta_html = "".join(
+        f"<li><span>{html.escape(label)}:</span> {html.escape(value)}</li>"
+        for label, value in meta_items if value and value.lower() != "k.a."
+    )
+
+    followup_entries: List[str] = []
+    for question in followups[:6]:
+        text = (question or "").strip()
+        if not text:
+            continue
+        if not text.lower().startswith("als nächstes"):
+            text = f"Als Nächstes: {text}"
+        followup_entries.append(f"<li>{html.escape(text)}</li>")
+    followup_html = "".join(followup_entries)
+
+    return (
+        "<section class=\"intro-cards\">"
+        "<div class=\"card summary\">"
+        "<h3>Projektüberblick</h3>"
+        f"<p>{summary}</p>"
+        "</div>"
+        "<div class=\"card meta\">"
+        "<h3>Kennzahlen</h3>"
+        f"<ul>{meta_html}</ul>"
+        "</div>"
+        + (
+            "<div class=\"card followup\"><h3>Nächste Schritte</h3><ul>"
+            + followup_html
+            + "</ul></div>"
+            if followup_html
+            else ""
+        )
+        + "</section>"
+    )
+
+
 def _render_cta(brand: dict[str, str]) -> str:
     cta_url = brand.get("cta_url") or "#"
     safe_url = html.escape(cta_url)
@@ -427,6 +925,47 @@ def _render_signature(brand: dict[str, str]) -> str:
         "<p class=\"legal\">Du erhältst diese Nachricht, weil du einen Premium-Report angefordert hast. Bitte prüfe Schutz- und Entsorgungshinweise vor der Umsetzung.</p>"
         "</section>"
     )
+
+
+def _extract_meta_from_report(markdown: str) -> dict[str, str]:
+    match = re.search(r"^>\s.*$", markdown, re.MULTILINE)
+    if not match:
+        return {}
+    return _parse_meta_line(match.group(0))
+
+
+def _parse_meta_line(meta_line: str) -> dict[str, str]:
+    cleaned = meta_line.replace("**", "").lstrip("> ")
+    parts = [segment.strip() for segment in re.split(r"[·|]", cleaned)]
+    result: dict[str, str] = {}
+    for part in parts:
+        if not part:
+            continue
+        if ":" in part:
+            label, value = part.split(":", 1)
+        elif " " in part:
+            label, value = part.split(" ", 1)
+        else:
+            continue
+        label = label.strip().lower()
+        value = value.strip()
+        if not value:
+            continue
+        if label == "meta" and " " in value:
+            nested_label, nested_value = value.split(" ", 1)
+            label = nested_label.strip().lower()
+            value = nested_value.strip()
+            if not value:
+                continue
+        if label in {"schwierigkeitsgrad", "niveau"}:
+            result["level"] = value
+        elif label in {"zeitaufwand", "zeit"}:
+            result["duration"] = value
+        elif label in {"kostenrahmen", "budget"}:
+            result["budget"] = value
+        elif label == "region":
+            result["region"] = value
+    return result
 
 
 def _extract_title(markdown: str) -> str:
@@ -618,6 +1157,62 @@ def _premium_styles(brand: dict[str, str]) -> str:
       padding: 14px 18px;
       margin: 1.4rem 0;
     }}
+    .callout.tip {{
+      border-left-color: {primary};
+    }}
+    .callout.warning {{
+      border-left-color: #f97316;
+      background: rgba(249, 115, 22, 0.12);
+    }}
+    .bullet-list {{
+      margin: 0.6rem 0 0.6rem 1.2rem;
+      padding: 0;
+    }}
+    .bullet-list li {{
+      margin-bottom: 0.35rem;
+    }}
+    .step-grid {{
+      display: grid;
+      gap: 18px;
+      margin: 1.2rem 0;
+    }}
+    .step-card {{
+      border-radius: 18px;
+      padding: 18px 20px;
+      background: rgba(148, 163, 184, 0.12);
+      display: grid;
+      gap: 10px;
+    }}
+    .step-card header {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }}
+    .step-index {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: {primary};
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 1rem;
+    }}
+    .step-card h3 {{
+      margin: 0;
+      font-size: 1.1rem;
+    }}
+    .step-check {{
+      margin: 0.4rem 0;
+      color: #1f2937;
+    }}
+    .search-summary {{
+      margin-top: 0.8rem;
+      color: #475569;
+      font-size: 0.95rem;
+    }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -663,6 +1258,9 @@ def _premium_styles(brand: dict[str, str]) -> str:
     @media (prefers-color-scheme: dark) {{
       .cta p {{ color: #cbd5f5; }}
       .product-meta, .product-note {{ color: #cbd5f5; }}
+      .search-summary {{ color: #cbd5f5; }}
+      .step-card {{ background: rgba(148, 163, 184, 0.18); }}
+      .step-check {{ color: #e2e8f0; }}
     }}
     .signature {{
       margin-top: 38px;

@@ -4,7 +4,19 @@ from __future__ import annotations
 
 import pytest
 
-from agents.schemas import ReportData, WebSearchItem, WebSearchPlan
+from agents.schemas import ReportData, WebSearchItem, WebSearchPlan, SearchPhase
+from models.report_payload import (
+    FAQItem,
+    NarrativeSection,
+    ReportMeta,
+    ReportPayload,
+    ShoppingItem,
+    ShoppingList,
+    StepDetail,
+    StepsSection,
+    TimeCostRow,
+    TimeCostSection,
+)
 from guards.schemas import InputGuardResult, OutputGuardResult
 from models.types import ProductItem
 from orchestrator.pipeline import SettingsBundle, run_job
@@ -23,7 +35,11 @@ async def test_pipeline_propagates_product_results(monkeypatch: pytest.MonkeyPat
     )
 
     async def fake_plan(query, settings):  # type: ignore[unused-argument]
-        return WebSearchPlan(searches=[WebSearchItem(reason="Allgemein", query="Test")])
+        return WebSearchPlan(
+            searches=[
+                WebSearchItem(reason=SearchPhase.VORBEREITUNG_PLANUNG, query="Test")
+            ]
+        )
 
     async def fake_search(plan, settings, *, user_query, category):  # type: ignore[unused-argument]
         return ["Zusammenfassung"], []
@@ -34,10 +50,38 @@ async def test_pipeline_propagates_product_results(monkeypatch: pytest.MonkeyPat
 
     async def fake_writer(query, summaries, settings, category=None, product_results=None):  # type: ignore[unused-argument]
         assert product_results == [product]
+        payload = ReportPayload(
+            title="Report",
+            teaser="",
+            meta=ReportMeta(difficulty="Anfänger", duration="4–6 h", budget="120–180 €"),
+            toc=[],
+            preparation=NarrativeSection(heading="Vorbereitung", paragraphs=["Text"], bullets=[], note=None),
+            shopping_list=ShoppingList(
+                items=[
+                    ShoppingItem(
+                        category="Material",
+                        product=product.title,
+                        quantity="1",
+                        rationale=product.note or "",
+                        price=product.price_text,
+                        url=str(product.url),
+                    )
+                ]
+            ),
+            step_by_step=StepsSection(heading="Schritt-für-Schritt", steps=[StepDetail(title="Test", bullets=[], check="OK")]),
+            quality_safety=NarrativeSection(heading="Qualität & Sicherheit", paragraphs=[], bullets=[], note=None),
+            time_cost=TimeCostSection(heading="Zeit & Kosten", rows=[TimeCostRow(work_package="Test", duration="1 h", cost="10 €")]),
+            options_upgrades=None,
+            maintenance=None,
+            faq=[FAQItem(question="Frage", answer="Antwort") for _ in range(5)],
+            followups=["Als Nächstes: Test" for _ in range(4)],
+            search_summary=None,
+        )
         return ReportData(
             short_summary="Kurz",
             markdown_report="# Report\n\n## Vorbereitung\nText",
-            followup_questions=["Frage 1", "Frage 2", "Frage 3", "Frage 4"],
+            followup_questions=payload.followups,
+            payload=payload,
         )
 
     async def fake_input_guard(query, settings):  # type: ignore[unused-argument]
@@ -65,4 +109,5 @@ async def test_pipeline_propagates_product_results(monkeypatch: pytest.MonkeyPat
     assert status["phase"] == "done"
     payload = status.get("payload") or {}
     assert payload.get("product_results") == [product.model_dump()]
+    assert isinstance(payload.get("report_payload"), dict)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from agents.model_settings import DEFAULT_SEARCHER
-from agents.schemas import WebSearchItem, WebSearchPlan
+from agents.schemas import WebSearchItem, WebSearchPlan, SearchPhase
 from agents import search as search_module
 
 
@@ -13,9 +13,9 @@ from agents import search as search_module
 async def test_perform_searches_returns_results_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
     plan = WebSearchPlan(
         searches=[
-            WebSearchItem(reason="r1", query="q1"),
-            WebSearchItem(reason="r2", query="q2"),
-            WebSearchItem(reason="r3", query="q3"),
+            WebSearchItem(reason=SearchPhase.VORBEREITUNG_PLANUNG, query="q1"),
+            WebSearchItem(reason=SearchPhase.MATERIAL_WERKZEUGE, query="q2"),
+            WebSearchItem(reason=SearchPhase.SICHERHEIT_UMWELT, query="q3"),
         ]
     )
 
@@ -53,14 +53,14 @@ async def test_perform_searches_requires_items() -> None:
 @pytest.mark.asyncio
 async def test_perform_searches_adds_bauhaus_item(monkeypatch: pytest.MonkeyPatch) -> None:
     plan = WebSearchPlan(
-        searches=[WebSearchItem(reason="r1", query="q1")]
+        searches=[WebSearchItem(reason=SearchPhase.VORBEREITUNG_PLANUNG, query="q1")]
     )
 
     seen_queries: list[str] = []
 
     async def fake_exec(item, settings, limiter):  # type: ignore[unused-argument]
         seen_queries.append(item.query)
-        return item.reason, []
+        return item.reason.value, []
 
     monkeypatch.setattr(search_module, "_execute_search_item", fake_exec)
 
@@ -73,4 +73,5 @@ async def test_perform_searches_adds_bauhaus_item(monkeypatch: pytest.MonkeyPatc
 
     assert seen_queries == ["q1"]  # Produkt-Slots werden separat behandelt
     assert product_results == []
+    assert summaries == [SearchPhase.VORBEREITUNG_PLANUNG.value]
 

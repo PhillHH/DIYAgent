@@ -1,0 +1,114 @@
+{%- macro render_paragraphs(items) -%}
+{%- for text in items %}
+{{ text }}
+
+{%- endfor -%}
+{%- endmacro -%}
+
+{%- macro render_narrative(section) -%}
+## {{ section.heading }}
+{{ render_paragraphs(section.paragraphs) -}}
+{%- if section.bullets %}
+{%- for bullet in section.bullets %}
+- {{ bullet }}
+{%- endfor %}
+
+{%- endif %}
+{%- if section.note %}
+> {{ section.note }}
+
+{%- endif %}
+{%- endmacro -%}
+
+{%- macro render_shopping_list(shopping) -%}
+## {{ shopping.heading }}
+{%- if shopping.items %}
+| Position | Kategorie | Produkt | Menge | Begründung | ca. Preis | Link |
+| --- | --- | --- | --- | --- | --- | --- |
+{%- for item in shopping.items %}
+| {{ loop.index }} | {{ item.category }} | {{ item.product }} | {{ item.quantity }} | {{ item.rationale }} | {{ item.price or "–" }} | {%- if item.url -%}[Zum Artikel]({{ item.url }}){%- else -%}–{%- endif -%} |
+{%- endfor %}
+
+{%- else %}
+- {{ shopping.empty_hint }}
+
+{%- endif %}
+{%- endmacro -%}
+
+{%- macro render_time_cost(section) -%}
+## {{ section.heading }}
+{%- if section.rows %}
+| Arbeitspaket | Dauer | Kosten | Puffer |
+| --- | --- | --- | --- |
+{%- for row in section.rows %}
+| {{ row.work_package }} | {{ row.duration }} | {{ row.cost }} | {{ row.buffer or "–" }} |
+{%- endfor %}
+
+{%- endif %}
+{%- if section.summary %}
+{{ section.summary }}
+
+{%- endif %}
+{%- endmacro -%}
+
+# {{ payload.title }}
+> Schwierigkeitsgrad {{ payload.meta.difficulty }} · Zeitaufwand {{ payload.meta.duration }} · Kostenrahmen {{ payload.meta.budget }}{%- if payload.meta.region %} · Region {{ payload.meta.region }}{%- endif %}
+
+{{ payload.teaser }}
+
+{%- if payload.search_summary %}
+> **Recherche-Zusammenfassung:** {{ payload.search_summary }}
+
+{%- endif %}
+{%- if payload.toc %}
+## Inhaltsverzeichnis
+{%- for entry in payload.toc %}
+- [{{ entry.title }}](#{{ entry.anchor }})
+{%- endfor %}
+
+{%- endif %}
+{{ render_narrative(payload.preparation) }}
+
+{{ render_shopping_list(payload.shopping_list) }}
+
+## {{ payload.step_by_step.heading }}
+| Schritt | Handlung | Prüfkriterium |
+| --- | --- | --- |
+{%- for step in payload.step_by_step.steps %}
+| Schritt {{ loop.index }}<br><small>{{ step.title }}</small> |
+{%- if step.bullets %}
+{%- for bullet in step.bullets %}
+{{ bullet }}{% if not loop.last %}<br>{% endif %}
+{%- endfor %}
+{%- else %}
+–
+{%- endif %}
+{%- if step.tip %}<br><em>Tipp: {{ step.tip }}</em>{% endif %}
+{%- if step.warning %}<br><em>Achtung: {{ step.warning }}</em>{% endif %} |
+{{ step.check }} |
+{%- endfor %}
+
+{{ render_narrative(payload.quality_safety) }}
+
+{{ render_time_cost(payload.time_cost) }}
+
+{%- if payload.options_upgrades and (payload.options_upgrades.paragraphs or payload.options_upgrades.bullets or payload.options_upgrades.note) %}
+{{ render_narrative(payload.options_upgrades) }}
+
+{%- endif %}
+{%- if payload.maintenance and (payload.maintenance.paragraphs or payload.maintenance.bullets or payload.maintenance.note) %}
+{{ render_narrative(payload.maintenance) }}
+
+{%- endif %}
+## FAQ
+{%- for item in payload.faq %}
+### {{ item.question }}
+{{ item.answer }}
+
+{%- endfor %}
+## Als Nächstes
+{%- for followup in payload.followups %}
+- {{ followup }}
+{%- endfor %}
+
+

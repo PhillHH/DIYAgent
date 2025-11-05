@@ -18,6 +18,11 @@
 
 Alle Funktionen werfen `ValueError` bei Guardrail-Verletzungen und propagieren `RuntimeError` fuer externe Fehler (z. B. API-Timeouts).
 
+### ReportPayload-Schema (Neu)
+- `models.report_payload.ReportPayload` beschreibt den strukturierten Report (Meta, Vorbereitung, Einkaufsliste, Schritte, Zeit & Kosten, FAQ, Follow-ups).
+- Writer fuellt dieses Schema zukuenftig direkt per LLM aus; Markdown/HTML-Templates lesen nur noch strukturierte Felder, kein Post-Parsing mehr.
+- Emailer erhaelt das gleiche `ReportPayload`-Objekt, um Intro-Karten, Einkaufslisten und CTA konsistent zu rendern.
+
 ## Writer-Varianten (DIY vs. KI_CONTROL)
 - **DIY**: Premium-Markdown mit Meta-Zeile, internem Inhaltsverzeichnis (nur `#anker`), Vorbereitung, Einkaufsliste Bauhaus (Tabelle mit Links), Schritt-für-Schritt inklusive Prüfkriterien, Qualität & Sicherheit, Zeit & Kosten sowie optionalen Upgrades/Pflege. FAQ am Ende, Laminat-Block entfällt.
 - **KI_CONTROL**: Governance-/Evaluationsbericht mit Sektionen zu Ziel & Kontext, steuerbaren Aspekten, Risiken, Metriken, Testplan, Governance und Roadmap.

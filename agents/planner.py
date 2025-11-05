@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from uuid import uuid4
 
 from agents.model_settings import ModelSettings
-from agents.schemas import WebSearchPlan, WebSearchItem
+from agents.schemas import WebSearchPlan, WebSearchItem, SearchPhase
 from config import HOW_MANY_SEARCHES, OPENAI_API_KEY, OPENAI_TRACING_ENABLED
 from util.openai_tracing import traced_completion
 from util import extract_output_text
@@ -80,14 +80,23 @@ async def plan_searches(query: str, settings: ModelSettings) -> WebSearchPlan:
             await asyncio.sleep(0)
             continue
 
-        if len(plan.searches) != HOW_MANY_SEARCHES:
-            # Wir verlangen exakt HOW_MANY_SEARCHES Einträge; alles andere würde
-            # nachgelagerte Komponenten aus dem Tritt bringen.
-            last_error = ValueError("Modell lieferte eine unerwartete Anzahl von Suchanfragen")
+        if not (1 <= len(plan.searches) <= 10):
+            last_error = ValueError("Modell lieferte außerhalb des 1..10 Bereichs")
+            await asyncio.sleep(0)
+            continue
+
+        if any(not item.query.strip() for item in plan.searches):
+            last_error = ValueError("Mindestens eine query ist leer")
             await asyncio.sleep(0)
             continue
 
         plan = _ensure_premium_slot(plan, query)
+
+        if len(plan.searches) > 10:
+            last_error = ValueError("Plan überschreitet 10 Einträge nach Premium-Slot")
+            await asyncio.sleep(0)
+            continue
+
         return plan
 
     # Fallback: heuristische Suchaufgaben erzeugen, damit der Flow nicht blockiert.
@@ -111,20 +120,40 @@ async def _invoke_planner_model(query: str, settings: ModelSettings, attempt: in
     """
 
     client = _get_client()
-    system_prompt = (
-        "Du bist ein Planer fuer Heimwerker-Recherchen. Erzeuge exakt "
-        f"{HOW_MANY_SEARCHES} Suchanfragen als JSON. Felder: reason, query. "
-        "Nur Heimwerker- und DIY-Themen sind zulaessig. Antworte nur mit 'REJECT', wenn das Anliegen eindeutig nicht DIY ist."
-    )
+    system_prompt_template = """Du bist ein Recherche-Planner für Heimwerkerprojekte. Plane für \"{QUERY}\" fünf bis acht präzise Web-Suchaufgaben.\n"
+    "Antworte ausschließlich mit gültigem JSON (kein Markdown, keine Erklärungen):\n"
+    "{{\n"
+    "  \"searches\": [\n"
+    "    {{ \"reason\": \"<Phase>\", \"query\": \"<Suchtext ohne Floskeln>\" }}\n"
+    "  ]\n"
+    "}}\n\n"
+    "Phasen (verwende jeden höchstens einmal, exakt diese Bezeichner):\n"
+    "\"Vorbereitung & Planung\",\"Material & Werkzeuge\",\"Sicherheit & Umwelt\",\"Ausführung Schritt-für-Schritt\",\"Qualität & Kontrolle\",\"Zeit & Kosten\",\"Optionen & Upgrades\",\"Pflege & Wartung\",\"Demontage/Untergrund\",\"Visual Guide\"\n\n"
+    "Regeln:\n"
+    "- Liefere 5–8 Einträge; wähle nur Phasen, die zu \"{QUERY}\" passen, ohne Duplikate.\n"
+    "- Formuliere jede query als dichte Stichwortkette mit 5–9 Segmenten (z. B. Untergrund, Maße, Reihenfolge, Trocknungszeiten, Prüf-Kriterien, Markenvergleich, Budget, Ablauf).\n"
+    "- Keine Fragen, keine Füllwörter, keine externen Domains oder Floskeln.\n"
+    "- Mindestens eine Aufgabe muss klare Dauer- oder Kostenbegriffe enthalten (Phase \"Zeit & Kosten\").\n"
+    "- Wenn das Thema nicht DIY-tauglich ist, antworte exakt mit \"REJECT\".\n\n"
+    "Beispiel:\n"
+    "{{\n"
+    "  \"searches\": [\n"
+    "    {{ \"reason\": \"Vorbereitung & Planung\", \"query\": \"{QUERY} Vorbereitung: Untergrundprüfung, Maßaufnahme, Werkzeug-Setup, Abdeckplan, Materiallogistik, Prioritäten\" }},\n"
+    "    {{ \"reason\": \"Material & Werkzeuge\", \"query\": \"Materialliste {QUERY}: Kernmaterialien, Zubehör, Mengenrechner, Qualitätsstufen, Bauhaus-Verfügbarkeit, Preis-Leistung\" }},\n"
+    "    {{ \"reason\": \"Zeit & Kosten\", \"query\": \"Zeit & Kosten {QUERY}: Arbeitspakete, Dauer je Schritt, Kostenrahmen, Pufferzeiten, Mietgeräte, Lieferfristen\" }}\n"
+    "  ]\n"
+    "}}"""
 
-    # Je weiterer Versuch liefern wir dem Modell mehr Hinweise: beim zweiten Versuch
-    # erinnern wir an typische DIY-Themen, beim dritten zwingen wir noch einmal explizit
-    # die JSON-Struktur. So erhöhen wir schrittweise die Erfolgswahrscheinlichkeit.
+    system_prompt = system_prompt_template.replace("{QUERY}", query)
 
     if attempt == 1:
-        system_prompt += " Bedenke: Laminat verlegen, bauen, reparieren etc. sind typische DIY-Themen."
+        system_prompt += (
+            "\n\nHinweis: Vorherige Antwort war ungültig. Antworte diesmal mit gültigem JSON, 5–8 Einträgen und eindeutigen Phasen."
+        )
     elif attempt == 2:
-        system_prompt += " Stelle sicher, dass du eine JSON-Struktur wie {'searches': [{'reason': '...', 'query': '...'}]} erzeugst."
+        system_prompt += (
+            "\n\nLetzte Warnung: Erstes Zeichen muss '{' sein. Benutze jede Phase höchstens einmal und liefere 5–8 präzise Stichwort-Queries."
+        )
 
     kwargs = settings.to_openai_kwargs()
     kwargs.update(
@@ -165,13 +194,25 @@ def _heuristic_plan(query: str) -> WebSearchPlan | None:
     dann trotzdem drei gut bekannte Suchfacetten mit, damit der Flow nicht komplett
     abbricht (lieber heuristisch als gar nicht)."""
 
-    seeds = [
-        ("Materialien & Werkzeuge", f"Materialien und Werkzeuge fuer {query}"),
-        ("Schritt-fuer-Schritt Anleitung", f"Anleitung {query}"),
-        ("Sicherheit & Fehler vermeiden", f"Sicherheitscheck {query}"),
+    seeds: list[tuple[SearchPhase, str]] = [
+        (
+            SearchPhase.VORBEREITUNG_PLANUNG,
+            f"{query} Vorbereitung: Untergrund, Maße, Zeitplan, Raumlogistik, Werkzeugbedarf, Reihenfolge",
+        ),
+        (
+            SearchPhase.MATERIAL_WERKZEUGE,
+            f"{query} Materialliste: Hauptmaterialien, Zubehör, Mengenplanung, Qualitätsstufen, Bezugsquellen, Preisrahmen",
+        ),
+        (
+            SearchPhase.SICHERHEIT_UMWELT,
+            f"{query} Sicherheit: PSA, Gefahren, Lüftung, Strom/Wasser-Zonen, Entsorgung, typische Fehler vermeiden",
+        ),
     ]
     items = [
-        {"reason": seed_reason, "query": seed_query}
+        {
+            "reason": seed_reason.value,
+            "query": seed_query,
+        }
         for seed_reason, seed_query in seeds[: HOW_MANY_SEARCHES]
     ]
     try:
@@ -189,14 +230,15 @@ def _ensure_premium_slot(plan: WebSearchPlan, query: str) -> WebSearchPlan:
 
     keywords = {"laminat", "parkett", "material", "boden"}
     lowered = query.lower()
-    if any(keyword in lowered for keyword in keywords):
-        existing = {item.reason.lower() for item in plan.searches}
-        premium_reason = "Premium-Optionen und Markenvergleich"
-        if premium_reason.lower() not in existing:
-            plan.searches.append(
-                WebSearchItem(
-                    reason=premium_reason,
-                    query=f"Premium Laminat Markenvergleich {query}",
-                )
+    if (
+        any(keyword in lowered for keyword in keywords)
+        and all(item.reason != SearchPhase.OPTIONEN_UPGRADES for item in plan.searches)
+        and len(plan.searches) < 10
+    ):
+        plan.searches.append(
+            WebSearchItem(
+                reason=SearchPhase.OPTIONEN_UPGRADES,
+                query=f"Optionen & Upgrades {query}: Produktalternativen, Premiumoberflächen, Zusatzfeatures, Garantien, Zusatzkosten, Markenvergleich, Kompatibilität, Nachhaltigkeit",
             )
+        )
     return plan

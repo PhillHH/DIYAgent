@@ -7,6 +7,7 @@ import pytest
 from guards.schemas import InputGuardResult, OutputGuardResult
 from orchestrator.pipeline import SettingsBundle, run_job
 from orchestrator.status import get_status, reset_statuses
+from agents.schemas import WebSearchPlan, WebSearchItem, SearchPhase
 
 
 @pytest.mark.asyncio
@@ -31,10 +32,13 @@ async def test_run_job_records_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     reset_statuses()
 
     async def fake_plan(query, settings):  # type: ignore[unused-argument]
-        from agents.schemas import WebSearchItem, WebSearchPlan
-
         return WebSearchPlan(
-            searches=[WebSearchItem(reason="Test", query="Test")]
+            searches=[
+                WebSearchItem(
+                    reason=SearchPhase.VORBEREITUNG_PLANUNG,
+                    query="Test",
+                )
+            ]
         )
 
     async def failing_search(*args, **kwargs):  # type: ignore[unused-argument]
@@ -56,5 +60,5 @@ async def test_run_job_records_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     status = get_status(job_id)
 
     assert status["phase"] == "error"
-    assert "Netzwerkfehler" in (status["detail"] or "")
+    assert "Netzwerkfehler" in (status.get("detail") or "")
 

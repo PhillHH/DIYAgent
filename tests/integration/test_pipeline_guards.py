@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agents.schemas import ReportData, WebSearchItem, WebSearchPlan
+from agents.schemas import ReportData, WebSearchItem, WebSearchPlan, SearchPhase
 from models.types import ProductItem
 from guards.schemas import InputGuardResult, OutputGuardResult
 from orchestrator.pipeline import SettingsBundle, run_job
@@ -38,8 +38,8 @@ async def test_pipeline_runs_through_for_diy(monkeypatch: pytest.MonkeyPatch) ->
     async def fake_plan(query, settings):  # type: ignore[unused-argument]
         return WebSearchPlan(
             searches=[
-                WebSearchItem(reason="Material", query="Material"),
-                WebSearchItem(reason="Werkzeug", query="Werkzeug"),
+                WebSearchItem(reason=SearchPhase.MATERIAL_WERKZEUGE, query="Material"),
+                WebSearchItem(reason=SearchPhase.VORBEREITUNG_PLANUNG, query="Werkzeug"),
             ]
         )
 
@@ -72,6 +72,10 @@ async def test_pipeline_runs_through_for_diy(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr("orchestrator.pipeline.classify_query_llm", fake_input_guard)
     monkeypatch.setattr("orchestrator.pipeline.plan_searches", fake_plan)
     monkeypatch.setattr("orchestrator.pipeline.perform_searches", fake_search)
+    async def fake_enrichment(*args, **kwargs):  # type: ignore[unused-argument]
+        return []
+
+    monkeypatch.setattr("orchestrator.pipeline.perform_product_enrichment", fake_enrichment)
     monkeypatch.setattr("orchestrator.pipeline.write_report", fake_writer)
     monkeypatch.setattr("orchestrator.pipeline.audit_report_llm", fake_output_guard)
     monkeypatch.setattr("orchestrator.pipeline.send_email", fake_email)
@@ -80,7 +84,7 @@ async def test_pipeline_runs_through_for_diy(monkeypatch: pytest.MonkeyPatch) ->
     await run_job(job_id, "Regal bauen", "user@example.com", SettingsBundle())
     status = get_status(job_id)
 
-    assert status["phase"] == "done"
+    assert status["phase"] == "done", status
 
 
 @pytest.mark.asyncio
@@ -92,7 +96,10 @@ async def test_pipeline_runs_through_for_ki_control(monkeypatch: pytest.MonkeyPa
 
     async def fake_plan(query, settings):  # type: ignore[unused-argument]
         return WebSearchPlan(
-            searches=[WebSearchItem(reason="Analyse", query="KI"), WebSearchItem(reason="Governance", query="Governance")]
+            searches=[
+                WebSearchItem(reason=SearchPhase.VORBEREITUNG_PLANUNG, query="KI"),
+                WebSearchItem(reason=SearchPhase.QUALITAET_KONTROLLE, query="Governance"),
+            ]
         )
 
     async def fake_search(*args, **kwargs):  # type: ignore[unused-argument]
@@ -117,6 +124,10 @@ async def test_pipeline_runs_through_for_ki_control(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr("orchestrator.pipeline.classify_query_llm", fake_input_guard)
     monkeypatch.setattr("orchestrator.pipeline.plan_searches", fake_plan)
     monkeypatch.setattr("orchestrator.pipeline.perform_searches", fake_search)
+    async def fake_enrichment(*args, **kwargs):  # type: ignore[unused-argument]
+        return []
+
+    monkeypatch.setattr("orchestrator.pipeline.perform_product_enrichment", fake_enrichment)
     monkeypatch.setattr("orchestrator.pipeline.write_report", fake_writer)
     monkeypatch.setattr("orchestrator.pipeline.audit_report_llm", fake_output_guard)
     monkeypatch.setattr("orchestrator.pipeline.send_email", fake_email)
@@ -125,4 +136,4 @@ async def test_pipeline_runs_through_for_ki_control(monkeypatch: pytest.MonkeyPa
     await run_job(job_id, "KI-Agenten sicher steuern", "user@example.com", SettingsBundle())
     status = get_status(job_id)
 
-    assert status["phase"] == "done"
+    assert status["phase"] == "done", status

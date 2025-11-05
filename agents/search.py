@@ -76,23 +76,9 @@ async def perform_searches(
 
     limiter = AsyncLimiter(max(1, MAX_CONCURRENCY), time_period=1)
 
-    standard_items: List[WebSearchItem] = []
-    product_items: List[WebSearchItem] = []
-    for item in plan.searches:
-        if _is_product_search(item):
-            product_items.append(item)
-        else:
-            standard_items.append(item)
-
-    if product_items:
-        _LOGGER.info(
-            "Produkt-Slots (%d) werden in separater Anreicherung abgearbeitet.",
-            len(product_items),
-        )
-
     tasks = [
         asyncio.create_task(_execute_search_item(item, settings, limiter))
-        for item in standard_items
+        for item in plan.searches
     ]
 
     combined = await asyncio.gather(*tasks)
@@ -125,9 +111,8 @@ async def perform_product_enrichment(
     context = "\n\n".join(result.strip() for result in search_results if result.strip())
     context = context[:2000] if context else None
 
-    item = WebSearchItem(reason="Einkaufsliste Bauhaus", query=bauhaus_query)
     summary, products = await _invoke_product_search(
-        item,
+        bauhaus_query,
         settings,
         limiter,
         context=context,
@@ -136,7 +121,7 @@ async def perform_product_enrichment(
         _LOGGER.info(
             "Produktanreicherung erfolgreich: %d Treffer (%s)",
             len(products),
-            [product.url for product in products[:2]],
+            [item.url for item in products[:2]],
         )
     else:
         _LOGGER.warning("Produktanreicherung lieferte keine Treffer: %s", summary)
@@ -146,8 +131,6 @@ async def perform_product_enrichment(
 async def _execute_search_item(
     item: WebSearchItem, settings: ModelSettings, limiter: AsyncLimiter
 ) -> Tuple[str, List[ProductItem]]:
-    if _is_product_search(item):
-        return await _invoke_product_search(item, settings, limiter)
     summary = await _invoke_standard_search(item, settings, limiter)
     return summary, []
 
@@ -240,7 +223,7 @@ async def _invoke_standard_search(
 
 
 async def _invoke_product_search(
-    item: WebSearchItem,
+    query: str,
     settings: ModelSettings,
     limiter: AsyncLimiter,
     *,
@@ -254,6 +237,7 @@ async def _invoke_product_search(
                 "Du bist ein Rechercheur und erstellst eine Einkaufsliste ausschließlich mit Produkten aus dem Bauhaus-Onlineshop. "
                 "Verwende das Web-Tool genau einmal mit einer site-beschränkten Suche (site:bauhaus.info OR site:bauhaus.de OR site:bauhaus.at). "
                 "Ignoriere und verwerfe Treffer anderer Domains oder generischer Suchmaschinen-Seiten. "
+                "Stelle eine vollständige Liste zusammen: Wähle je Kategorie ein repräsentatives Produkt (z. B. Waschbecken, Armatur/Mischer, Siphon/Abfluss, Befestigungsmaterial, Dichtungen, Sicherheit, Zubehör). Keine doppelt oder stark ähnlichen Artikel derselben Kategorie. "
                 "Extrahiere nur finale Produktseiten, entferne Affiliate-/Tracking-Parameter und antworte als JSON: "
                 '{"items": [{"title": "string", "url": "string", "note": "string|null", "price_text": "string|null"}]}.'
             ),
@@ -261,8 +245,8 @@ async def _invoke_product_search(
         {
             "role": "user",
             "content": (
-                f"Suche nach Produkten und Zubehör für: {item.query}. "
-                "Liefere ausschließlich Bauhaus-Produkte (info/de/at), mindestens drei Stück, sofern verfügbar."
+                f"Suche nach Produkten und Zubehör für: {query}. "
+                "Liefere ausschließlich Bauhaus-Produkte (info/de/at). Gib für jede relevanten Kategorie genau eine Position zurück (repräsentatives Produkt). Vermeide doppelte oder nahezu identische Treffer."
                 + (
                     "\nKontext aus vorherigen Recherchen:\n" + context.strip()
                     if context
@@ -285,7 +269,7 @@ async def _invoke_product_search(
         with attempt:
             async with limiter:
                 include_tool_choice = True
-                base_metadata = {"agent": "search_products", "query": item.query, "tool_type": tool_type}
+                base_metadata = {"agent": "search_products", "query": query, "tool_type": tool_type}
 
                 for _ in range(2):
                     call_kwargs = dict(base_kwargs)
@@ -302,7 +286,7 @@ async def _invoke_product_search(
                     trace_payload = {
                         "messages": messages,
                         "tools": [{"type": tool_type}],
-                        "query": item.query,
+                        "query": query,
                     }
 
                     parse_attempts = 0
@@ -319,9 +303,9 @@ async def _invoke_product_search(
                                 timeout=DEFAULT_TIMEOUT,
                             )
                         except asyncio.TimeoutError as error:
-                            _LOGGER.warning("Produkt-Suche Timeout fuer '%s'", item.query)
+                            _LOGGER.warning("Produkt-Suche Timeout fuer '%s'", query)
                             raise RuntimeError(
-                                f"Timeout fuer Produkt-Suchanfrage '{item.query}'"
+                                f"Timeout fuer Produkt-Suchanfrage '{query}'"
                             ) from error
                         except Exception as exc:
                             if include_tool_choice and _is_tool_choice_error(exc):
@@ -396,11 +380,6 @@ def _validate_payload(payload: dict) -> None:
                 _recurse(value, path)
 
     _recurse(payload)
-
-
-def _is_product_search(item: WebSearchItem) -> bool:
-    haystack = f"{item.reason} {item.query}".lower()
-    return "einkaufsliste" in haystack and "bauhaus" in haystack
 
 
 def _parse_product_response(text: str) -> List[ProductItem]:

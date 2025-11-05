@@ -101,6 +101,9 @@ async def run_job(
             product_results=product_results,
         )
 
+        if report.payload is not None:
+            job_context["report_payload"] = report.payload.model_dump()
+
         audit = await audit_report_llm(query, report.markdown_report, bundle.guard)
         if not audit.allowed:
             set_status(job_id, "rejected", "Policy: " + "; ".join(audit.issues))
@@ -122,6 +125,7 @@ async def run_job(
             "email_links": list(bauhaus_links),
             "email_preview": email_result.get("html_preview"),
             "product_results": job_context.get("product_results"),
+            "report_payload": job_context.get("report_payload"),
         }
 
         set_status(job_id, "done", None, payload=payload)

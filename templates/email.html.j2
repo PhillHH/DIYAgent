@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>{{ styles }}</style>
+    <title>{{ subject }}</title>
+  </head>
+  <body>
+    <!-- Subject: {{ subject }} -->
+    <span class="preheader">{{ preheader }}</span>
+    <div class="email-shell">
+      <div class="email-container">
+        {{ header_html | safe }}
+        {{ toc_html | safe }}
+        {{ summary_cards_html | safe }}
+        {{ sections_html | safe }}
+        {{ cta_html | safe }}
+        <p class="attachment-note">{{ attachment_note }}</p>
+        {{ signature_html | safe }}
+      </div>
+    </div>
+  </body>
+</html>
+

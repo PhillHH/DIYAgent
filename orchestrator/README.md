@@ -13,7 +13,7 @@
 ## Schnittstellen / Vertraege
 - `run_job(job_id, query, email, settings_bundle)` koordiniert den vollständigen Ablauf.
 - Statuszugriff via `set_status(job_id, phase, detail=None, payload=None)` und `get_status(job_id) -> dict`.
-- `payload` enthält Zusatzdaten (z. B. Bauhaus-Links, HTML-Preview) und wird vom Status-Endpoint durchgereicht.
+- `payload` enthält Zusatzdaten (z. B. Bauhaus-Links, HTML-Preview, `report_payload`) und wird vom Status-Endpoint durchgereicht.
 - Phasenmodell: `queued → planning → searching → writing → email → done` (bzw. `rejected` / `error`).
 
 ## Beispielablauf
