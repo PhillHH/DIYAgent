@@ -1,5 +1,5 @@
-﻿import clsx from "clsx";
-import { motion } from "framer-motion";
+import clsx from "clsx";
+import type { JSX } from "react";
 
 import { JOB_PHASES, type Phase, type UiState } from "../types";
 
@@ -10,11 +10,6 @@ const PHASE_LABELS: Record<Phase, string> = {
   writing: "Schreiben",
   email: "E-Mail Versand",
   done: "Abgeschlossen",
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 14 },
-  visible: { opacity: 1, y: 0 },
 };
 
 type StatusStepperProps = {
@@ -64,10 +59,10 @@ export function StatusStepper({ uiState, detail }: StatusStepperProps): JSX.Elem
   const jobId = uiState.kind === "running" || uiState.kind === "done" || uiState.kind === "rejected" ? uiState.jobId : null;
 
   return (
-    <motion.section className="card-glass" aria-live="polite" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }}>
+    <section className="card-glass animate-fade-up" aria-live="polite" style={{ animationDelay: "0.2s" }}>
       <h2 className="text-xl font-semibold text-stone-800">Projektstatus</h2>
 
-      <motion.ol className="mt-8 grid gap-4 md:grid-cols-6" initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}>
+      <ol className="mt-8 grid gap-4 md:grid-cols-6">
         {JOB_PHASES.map((phase, index) => {
           const isCompleted = activeIndex > index && !isRejected;
           const isActive = activeIndex === index && !isRejected;
@@ -89,7 +84,7 @@ export function StatusStepper({ uiState, detail }: StatusStepperProps): JSX.Elem
           );
 
           return (
-            <motion.li key={phase} className={baseClass} variants={itemVariants} layout>
+            <li key={phase} className={`${baseClass} animate-fade-up`} style={{ animationDelay: `${0.24 + index * 0.05}s` }}>
               <div className="flex items-center gap-3">
                 <span className={indicatorClass}>{isCompleted ? <CheckIcon /> : index + 1}</span>
                 <span className="font-semibold uppercase tracking-wide">{PHASE_LABELS[phase]}</span>
@@ -99,20 +94,15 @@ export function StatusStepper({ uiState, detail }: StatusStepperProps): JSX.Elem
               {isPending && <p className="text-xs text-stone-400">Ausstehend…</p>}
 
               {isClosingStep && isRejected && (
-                <motion.div
-                  className="mt-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                >
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 animate-fade-up" style={{ animationDelay: `${0.28 + index * 0.05}s` }}>
                   <CrossIcon />
                   <span>Anfrage wurde abgelehnt.</span>
-                </motion.div>
+                </div>
               )}
-            </motion.li>
+            </li>
           );
         })}
-      </motion.ol>
+      </ol>
 
       <div className="mt-8 space-y-2 text-sm text-stone-600">
         {uiState.kind === "idle" && <p>Noch kein Auftrag gestartet.</p>}
@@ -137,7 +127,7 @@ export function StatusStepper({ uiState, detail }: StatusStepperProps): JSX.Elem
         )}
         {uiState.kind === "error" && <p className="text-rose-600">{uiState.message}</p>}
       </div>
-    </motion.section>
+    </section>
   );
 }
 
